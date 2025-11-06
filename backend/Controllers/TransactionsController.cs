@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using backend.Models;
 using backend.Services;
+using System.ComponentModel.DataAnnotations;
 
 namespace backend.Controllers;
 
@@ -24,6 +25,15 @@ public class TransactionsController : ControllerBase
         if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
             throw new UnauthorizedAccessException("無法識別用戶");
         return userId;
+    }
+
+    public class SettlePairDto
+    {
+        [Required]
+        public int OtherUserId { get; set; }
+        [Required]
+        public string Direction { get; set; } = string.Empty; // IOwe 或 OweMe
+        public DateTime? UpToDate { get; set; }
     }
 
     [HttpGet("group/{groupId}")]
@@ -215,6 +225,35 @@ public class TransactionsController : ControllerBase
         {
             var msg = dbEx.GetBaseException().Message ?? dbEx.Message;
             return BadRequest(new { message = msg });
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.GetBaseException().Message ?? ex.Message;
+            return BadRequest(new { message = msg });
+        }
+    }
+
+    [HttpPost("group/{groupId}/settle-pair")]
+    public async Task<ActionResult<object>> SettlePair(int groupId, [FromBody] SettlePairDto dto)
+    {
+        var userId = GetUserId();
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = string.Join("; ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => string.IsNullOrWhiteSpace(e.ErrorMessage) ? e.Exception?.Message : e.ErrorMessage)
+                    .Where(m => !string.IsNullOrWhiteSpace(m)));
+                return BadRequest(new { message = errors });
+            }
+
+            var updated = await _transactionService.SettlePairDebtsAsync(groupId, userId, dto.OtherUserId, dto.Direction, dto.UpToDate);
+            return Ok(new { updated });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(ex.Message);
         }
         catch (Exception ex)
         {

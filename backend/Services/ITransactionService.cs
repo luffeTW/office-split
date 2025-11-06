@@ -11,4 +11,5 @@ public interface ITransactionService
     Task<bool> DeleteTransactionAsync(int id, int userId);
     Task<List<SplitDto>> GetTransactionSplitsAsync(int transactionId, int userId);
     Task<SplitDto?> UpdateSplitAsync(int splitId, UpdateSplitDto updateDto, int userId);
+    Task<int> SettlePairDebtsAsync(int groupId, int userId, int otherUserId, string direction, DateTime? upToDate = null);
 }

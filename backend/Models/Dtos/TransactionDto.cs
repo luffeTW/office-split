@@ -27,6 +27,14 @@ public class CreateTransactionDto
     [Range(1, int.MaxValue, ErrorMessage = "請選擇有效的分類")]
     public int CategoryId { get; set; }
 
+    // 必填：指定墊款者（付款人）
+    [Range(1, int.MaxValue, ErrorMessage = "請選擇有效的墊款者")]
+    public int PayerUserId { get; set; }
+
+    // 必填：指定借款者（需為群組成員，且不得與墊款者相同）
+    [Range(1, int.MaxValue, ErrorMessage = "請選擇有效的借款者")]
+    public int BorrowerUserId { get; set; }
+
     [Range(typeof(decimal), "0.01", "79228162514264337593543950335", ErrorMessage = "金額需大於 0")]
     public decimal Amount { get; set; }
 
@@ -35,7 +43,7 @@ public class CreateTransactionDto
 
     public DateTime Date { get; set; } = DateTime.UtcNow;
 
-    // 若為 null，則預設平均分攤給群組所有成員
+    // 單純紀錄墊款，忽略分攤設定
     public List<int>? SplitUserIds { get; set; }
 
     public bool SplitEqually { get; set; } = true;
@@ -47,6 +55,8 @@ public class UpdateTransactionDto
     public decimal? Amount { get; set; }
     public string? Description { get; set; }
     public DateTime? Date { get; set; }
+    public int? PayerUserId { get; set; }
+    public int? BorrowerUserId { get; set; }
 }
 
 public class SplitDto

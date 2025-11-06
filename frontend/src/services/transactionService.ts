@@ -30,6 +30,8 @@ export interface Split {
 export interface CreateTransactionDto {
   groupId: number
   categoryId: number
+  payerUserId: number
+  borrowerUserId: number
   amount: number
   description?: string
   date: string
@@ -42,6 +44,8 @@ export interface UpdateTransactionDto {
   amount?: number
   description?: string
   date?: string
+  payerUserId?: number
+  borrowerUserId?: number
 }
 
 export interface UpdateSplitDto {
@@ -87,6 +91,18 @@ export const transactionService = {
 
   updateSplit: async (splitId: number, data: UpdateSplitDto): Promise<Split> => {
     const response = await apiClient.put<Split>(`/transactions/splits/${splitId}`, data)
+    return response.data
+  },
+
+  settlePairDebts: async (
+    groupId: number,
+    otherUserId: number,
+    direction: 'IOwe' | 'OweMe',
+    upToDate?: string
+  ): Promise<{ updated: number }> => {
+    const payload: any = { otherUserId, direction }
+    if (upToDate) payload.upToDate = upToDate
+    const response = await apiClient.post<{ updated: number }>(`/transactions/group/${groupId}/settle-pair`, payload)
     return response.data
   },
 }

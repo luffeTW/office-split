@@ -33,6 +33,20 @@ export interface UserBalance {
   balance: number
 }
 
+export interface PairwiseDebt {
+  userId: number
+  username: string
+  amount: number
+}
+
+export interface MyDebts {
+  iOwe: PairwiseDebt[]
+  oweMe: PairwiseDebt[]
+  totalIOwe: number
+  totalOweMe: number
+  net: number
+}
+
 export const reportService = {
   getGroupReport: async (
     groupId: number,
@@ -73,6 +87,18 @@ export const reportService = {
       params,
       responseType: 'blob',
     })
+    return response.data
+  },
+
+  getMyDebts: async (
+    groupId: number,
+    startDate?: string,
+    endDate?: string
+  ): Promise<MyDebts> => {
+    const params: Record<string, string> = {}
+    if (startDate) params.startDate = startDate
+    if (endDate) params.endDate = endDate
+    const response = await apiClient.get<MyDebts>(`/reports/group/${groupId}/my-debts`, { params })
     return response.data
   },
 }

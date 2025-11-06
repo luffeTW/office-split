@@ -47,6 +47,28 @@ public class ReportsController : ControllerBase
         }
     }
 
+    [HttpGet("group/{groupId}/my-debts")]
+    public async Task<ActionResult<MyDebtsDto>> GetMyDebts(
+        int groupId,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        var userId = GetUserId();
+        try
+        {
+            var result = await _reportService.GetMyDebtsAsync(groupId, userId, startDate, endDate);
+            return Ok(result);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("group/{groupId}/export/csv")]
     public async Task<IActionResult> ExportReportToCsv(
         int groupId,

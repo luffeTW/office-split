@@ -30,6 +30,8 @@ export interface Split {
 export interface CreateTransactionDto {
   groupId: number;
   categoryId: number;
+  payerUserId: number;
+  borrowerUserId: number;
   amount: number;
   description?: string;
   date: string;

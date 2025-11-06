@@ -36,3 +36,22 @@ public class UserBalanceDto
     public decimal TotalOwed { get; set; }
     public decimal Balance { get; set; }
 }
+
+public class PairwiseDebtDto
+{
+    public int UserId { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+}
+
+public class MyDebtsDto
+{
+    // 我欠別人的：對方清單
+    public List<PairwiseDebtDto> IOwe { get; set; } = new();
+    // 別人欠我的：對方清單
+    public List<PairwiseDebtDto> OweMe { get; set; } = new();
+    // 總結
+    public decimal TotalIOwe => IOwe.Sum(x => x.Amount);
+    public decimal TotalOweMe => OweMe.Sum(x => x.Amount);
+    public decimal Net => TotalOweMe - TotalIOwe;
+}

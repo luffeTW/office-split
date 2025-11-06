@@ -105,6 +105,54 @@ public class ReportService : IReportService
         };
     }
 
+    public async Task<MyDebtsDto> GetMyDebtsAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null)
+    {
+        var isMember = await _groupService.IsUserMemberOfGroupAsync(groupId, userId);
+        if (!isMember)
+            throw new UnauthorizedAccessException("無權限查看此群組的帳務");
+
+        var splits = await _context.Splits
+            .Where(s => s.Transaction.GroupId == groupId &&
+                   (startDate == null || s.Transaction.Date >= startDate) &&
+                   (endDate == null || s.Transaction.Date <= endDate))
+            .Include(s => s.User) // 借款者
+            .Include(s => s.Transaction)
+                .ThenInclude(t => t.User) // 墊款者
+            .ToListAsync();
+
+        // 我欠別人：當我為借款者，對方為墊款者
+        var iOwe = splits
+            .Where(s => s.UserId == userId && s.Transaction.UserId != userId)
+            .GroupBy(s => new { OtherId = s.Transaction.UserId, OtherName = s.Transaction.User.Username })
+            .Select(g => new PairwiseDebtDto
+            {
+                UserId = g.Key.OtherId,
+                Username = g.Key.OtherName,
+                Amount = g.Sum(x => x.Amount)
+            })
+            .OrderByDescending(x => x.Amount)
+            .ToList();
+
+        // 別人欠我：當我是墊款者，對方為借款者
+        var oweMe = splits
+            .Where(s => s.Transaction.UserId == userId && s.UserId != userId)
+            .GroupBy(s => new { OtherId = s.UserId, OtherName = s.User.Username })
+            .Select(g => new PairwiseDebtDto
+            {
+                UserId = g.Key.OtherId,
+                Username = g.Key.OtherName,
+                Amount = g.Sum(x => x.Amount)
+            })
+            .OrderByDescending(x => x.Amount)
+            .ToList();
+
+        return new MyDebtsDto
+        {
+            IOwe = iOwe,
+            OweMe = oweMe
+        };
+    }
+
     public async Task<byte[]> ExportReportToCsvAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null)
     {
         var isMember = await _groupService.IsUserMemberOfGroupAsync(groupId, userId);

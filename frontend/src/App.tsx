@@ -5,6 +5,7 @@ import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import TransactionsPage from './pages/TransactionsPage'
 import GroupsPage from './pages/GroupsPage'
+import UsersPage from './pages/UsersPage'
 import ReportsPage from './pages/ReportsPage'
 import Layout from './components/Layout'
 
@@ -29,6 +30,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
         <Route path="groups" element={<GroupsPage />} />
+        <Route path="users" element={<UsersPage />} />
         <Route path="reports" element={<ReportsPage />} />
       </Route>
     </Routes>

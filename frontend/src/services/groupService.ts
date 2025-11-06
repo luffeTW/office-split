@@ -41,6 +41,11 @@ export const groupService = {
     return response.data
   },
 
+  getAllGroups: async (): Promise<Group[]> => {
+    const response = await apiClient.get<Group[]>('/groups/all')
+    return response.data
+  },
+
   getGroupById: async (id: number): Promise<Group> => {
     const response = await apiClient.get<Group>(`/groups/${id}`)
     return response.data

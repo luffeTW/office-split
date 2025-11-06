@@ -12,6 +12,7 @@ function Layout() {
     if (location.pathname === '/') return 'dashboard'
     if (location.pathname.startsWith('/transactions')) return 'transactions'
     if (location.pathname.startsWith('/groups')) return 'groups'
+    if (location.pathname.startsWith('/users')) return 'users'
     if (location.pathname.startsWith('/reports')) return 'reports'
     return 'dashboard'
   })()
@@ -24,6 +25,8 @@ function Layout() {
         navigate('/transactions'); break
       case 'groups':
         navigate('/groups'); break
+      case 'users':
+        navigate('/users'); break
       case 'reports':
         navigate('/reports'); break
     }
@@ -45,6 +48,7 @@ function Layout() {
               <TabsTrigger value="dashboard">儀表板</TabsTrigger>
               <TabsTrigger value="transactions">記帳</TabsTrigger>
               <TabsTrigger value="groups">群組</TabsTrigger>
+              <TabsTrigger value="users">使用者</TabsTrigger>
               <TabsTrigger value="reports">報表</TabsTrigger>
             </TabsList>
           </Tabs>

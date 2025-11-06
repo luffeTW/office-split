@@ -13,6 +13,34 @@ public class GroupService : IGroupService
         _context = context;
     }
 
+    public async Task<List<GroupDto>> GetAllGroupsAsync()
+    {
+        return await _context.Groups
+            .Include(g => g.Creator)
+            .Include(g => g.Members)
+                .ThenInclude(m => m.User)
+            .Select(g => new GroupDto
+            {
+                Id = g.Id,
+                Name = g.Name,
+                Description = g.Description,
+                CreatedBy = g.CreatedBy,
+                CreatorName = g.Creator.Username,
+                CreatedAt = g.CreatedAt,
+                Members = g.Members.Select(m => new GroupMemberDto
+                {
+                    Id = m.Id,
+                    UserId = m.UserId,
+                    Username = m.User.Username,
+                    Email = m.User.Email,
+                    Role = m.Role,
+                    JoinedAt = m.JoinedAt
+                }).ToList()
+            })
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+    }
+
     public async Task<List<GroupDto>> GetUserGroupsAsync(int userId)
     {
         return await _context.GroupMembers

@@ -4,6 +4,7 @@ namespace backend.Services;
 
 public interface IGroupService
 {
+    Task<List<GroupDto>> GetAllGroupsAsync();
     Task<List<GroupDto>> GetUserGroupsAsync(int userId);
     Task<GroupDto?> GetGroupByIdAsync(int id, int userId);
     Task<GroupDto> CreateGroupAsync(CreateGroupDto createDto, int creatorId);

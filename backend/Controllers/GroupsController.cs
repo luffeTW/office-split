@@ -25,6 +25,13 @@ public class GroupsController : ControllerBase
         return userId;
     }
 
+    [HttpGet("all")]
+    public async Task<ActionResult<List<GroupDto>>> GetAllGroups()
+    {
+        var groups = await _groupService.GetAllGroupsAsync();
+        return Ok(groups);
+    }
+
     [HttpGet]
     public async Task<ActionResult<List<GroupDto>>> GetUserGroups()
     {

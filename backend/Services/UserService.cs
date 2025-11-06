@@ -13,6 +13,20 @@ public class UserService : IUserService
         _context = context;
     }
 
+    public async Task<List<UserDto>> GetAllUsersAsync()
+    {
+        return await _context.Users
+            .Select(u => new UserDto
+            {
+                Id = u.Id,
+                Username = u.Username,
+                Email = u.Email,
+                CreatedAt = u.CreatedAt
+            })
+            .OrderBy(u => u.Username)
+            .ToListAsync();
+    }
+
     public async Task<UserDto?> GetUserByIdAsync(int id)
     {
         var user = await _context.Users.FindAsync(id);

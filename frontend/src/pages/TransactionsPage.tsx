@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import { Eye, ExternalLink, Download, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,18 @@ function TransactionsPage() {
     receiptUrl: undefined,
   })
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  const openPreview = (url?: string) => {
+    if (!url) return
+    setPreviewUrl(url)
+    setPreviewOpen(true)
+  }
+  const toggleExpand = (id: number) => {
+    setExpandedId(prev => (prev === id ? null : id))
+  }
 
   const queryClient = useQueryClient()
   const { user } = useAuth()
@@ -241,6 +254,7 @@ function TransactionsPage() {
             </TableHeader>
             <TableBody>
               {transactions?.map((transaction) => (
+                <>
                 <TableRow key={transaction.id}>
                   <TableCell>{new Date(transaction.date).toLocaleDateString('zh-TW')}</TableCell>
                   <TableCell>
@@ -250,20 +264,20 @@ function TransactionsPage() {
                   <TableCell>{transaction.description || '-'}</TableCell>
                   <TableCell>
                     {transaction.receiptUrl ? (
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={buildFileUrl(transaction.receiptUrl)}
-                          target="_blank"
-                          className="text-blue-600 underline"
-                        >檢視</a>
-                        <img
-                          src={buildFileUrl(transaction.receiptUrl)}
-                          alt="收據"
-                          loading="lazy"
-                          className="h-10 w-auto rounded border bg-white object-contain"
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(transaction.id)}
+                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm hover:bg-muted"
+                        title="展開收據操作"
+                      >
+                        收據
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${expandedId === transaction.id ? 'rotate-180' : ''}`}
                         />
-                      </div>
-                    ) : '-'}
+                      </button>
+                    ) : (
+                      '-'
+                    )}
                   </TableCell>
                   <TableCell>{transaction.userName}</TableCell>
                   <TableCell className="space-x-2">
@@ -271,6 +285,60 @@ function TransactionsPage() {
                     <Button variant="destructive" size="sm" onClick={() => handleDelete(transaction.id)}>刪除</Button>
                   </TableCell>
                 </TableRow>
+                {expandedId === transaction.id && transaction.receiptUrl && (
+                  <TableRow key={`${transaction.id}-expanded`} className="bg-muted/30">
+                    <TableCell colSpan={7}>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                        <button
+                          type="button"
+                          onClick={() => openPreview(buildFileUrl(transaction.receiptUrl))}
+                          className="group relative max-h-64 w-full overflow-hidden rounded-md border bg-white sm:w-80"
+                          title="點擊預覽大圖"
+                        >
+                          <img
+                            src={buildFileUrl(transaction.receiptUrl)}
+                            alt="收據預覽"
+                            loading="lazy"
+                            className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-105"
+                          />
+                          <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/0 transition-colors duration-200 group-hover:bg-black/20">
+                            <Eye className="h-6 w-6 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                          </div>
+                        </button>
+                        <div className="flex-1 space-y-3">
+                          <div className="text-sm text-muted-foreground">收據操作</div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => openPreview(buildFileUrl(transaction.receiptUrl))}
+                              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                            >
+                              預覽大圖
+                              <Eye className="ml-2 h-4 w-4" />
+                            </button>
+                            <a
+                              href={buildFileUrl(transaction.receiptUrl)}
+                              target="_blank"
+                              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                            >
+                              在新分頁開啟
+                              <ExternalLink className="ml-2 h-4 w-4" />
+                            </a>
+                            <a
+                              href={buildFileUrl(transaction.receiptUrl)}
+                              download
+                              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                            >
+                              下載
+                              <Download className="ml-2 h-4 w-4" />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                </>
               ))}
             </TableBody>
           </Table>
@@ -387,6 +455,36 @@ function TransactionsPage() {
             >
               {createMutation.isPending || updateMutation.isPending ? (editingId ? '更新中...' : '建立中...') : (editingId ? '儲存' : '建立')}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 收據預覽對話框 */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>收據預覽</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[75vh] overflow-auto">
+            {previewUrl && (
+              <img
+                src={previewUrl}
+                alt="收據大圖"
+                className="mx-auto max-h-[70vh] w-full rounded-md bg-white object-contain"
+              />
+            )}
+          </div>
+          <DialogFooter className="sm:justify-start">
+            {previewUrl && (
+              <a
+                href={previewUrl}
+                target="_blank"
+                className="inline-flex items-center text-sm text-blue-600 hover:underline"
+              >
+                在新分頁開啟
+                <ExternalLink className="ml-1 h-3.5 w-3.5" />
+              </a>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -76,7 +76,8 @@ public class TransactionsController : ControllerBase
                     return BadRequest(new { message = "僅支援 jpg/jpeg/png/gif/webp 格式" });
 
                 // 目錄：wwwroot/uploads/receipts/{groupId}
-                var root = _env.WebRootPath ?? Path.Combine(AppContext.BaseDirectory, "wwwroot");
+                // 與 Program.cs 的 UseStaticFiles 設定一致：以 ContentRoot/wwwroot 為根目錄
+                var root = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
                 var targetDir = Path.Combine(root, "uploads", "receipts", form.GroupId.ToString());
                 Directory.CreateDirectory(targetDir);
 
@@ -144,7 +145,8 @@ public class TransactionsController : ControllerBase
             var existing = await _transactionService.GetTransactionByIdAsync(id, userId);
             if (existing == null) return NotFound();
 
-            var root = _env.WebRootPath ?? Path.Combine(AppContext.BaseDirectory, "wwwroot");
+            // 與 Program.cs 的 UseStaticFiles 設定一致：以 ContentRoot/wwwroot 為根目錄
+            var root = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
             var targetDir = Path.Combine(root, "uploads", "receipts", existing.GroupId.ToString());
             Directory.CreateDirectory(targetDir);
 

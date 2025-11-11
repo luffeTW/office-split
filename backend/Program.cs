@@ -108,7 +108,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowAll");
 // 提供靜態檔案（例如收據圖片）
-var wwwrootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+// 確保前後端上傳與服務目錄一致：統一使用 ContentRoot 下的 wwwroot 作為 WebRoot
+var wwwrootPath = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(wwwrootPath);
 app.UseStaticFiles(new StaticFileOptions
 {

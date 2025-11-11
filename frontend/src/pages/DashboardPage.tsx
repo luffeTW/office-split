@@ -3,10 +3,11 @@ import { useState } from 'react'
 import { groupService } from '../services/groupService'
 import { transactionService } from '../services/transactionService'
 import { reportService, MyDebts } from '../services/reportService'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 
 function DashboardPage() {
+  // showAll 為 true 時代表顯示「全部群組」的統合狀態
+  const [showAll, setShowAll] = useState<boolean>(true)
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
 
   const { data: groups, isLoading: groupsLoading } = useQuery({
@@ -14,34 +15,86 @@ function DashboardPage() {
     queryFn: () => groupService.getUserGroups(),
   })
 
-  const { data: transactions, isLoading: transactionsLoading } = useQuery({
+  // 單一群組交易
+  const { data: groupTransactions, isLoading: groupTxLoading } = useQuery({
     queryKey: ['transactions', selectedGroupId],
     queryFn: () => {
-      if (!selectedGroupId) return Promise.resolve([])
+      if (!selectedGroupId || showAll) return Promise.resolve([])
       return transactionService.getTransactions(selectedGroupId)
     },
-    enabled: !!selectedGroupId,
+    enabled: !!selectedGroupId && !showAll,
   })
 
-  const queryClient = useQueryClient()
+  // 全部群組交易（僅在 showAll 時啟用）
+  const { data: allTransactions, isLoading: allTxLoading } = useQuery({
+    queryKey: ['transactions', 'all'],
+    queryFn: async () => {
+      if (!showAll || !groups) return []
+      const perGroup = await Promise.all(groups.map(g => transactionService.getTransactions(g.id)))
+      const groupMap = new Map(groups.map(g => [g.id, g.name]))
+      return perGroup
+        .flat()
+        .map(t => ({ ...t, groupName: t.groupName || groupMap.get(t.groupId) }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    },
+    enabled: showAll && !!groups,
+  })
 
-  const { data: myDebts } = useQuery<MyDebts>({
+  // 統計資料查詢（已移除結清功能，僅顯示資訊）
+
+  // 單一群組債務
+  const { data: myDebtsSingle } = useQuery<MyDebts>({
     queryKey: ['my-debts', selectedGroupId],
     queryFn: () => {
-      if (!selectedGroupId) return Promise.resolve({ iOwe: [], oweMe: [], totalIOwe: 0, totalOweMe: 0, net: 0 })
+      if (!selectedGroupId || showAll)
+        return Promise.resolve({ iOwe: [], oweMe: [], totalIOwe: 0, totalOweMe: 0, net: 0 })
       return reportService.getMyDebts(selectedGroupId)
     },
-    enabled: !!selectedGroupId,
+    enabled: !!selectedGroupId && !showAll,
   })
 
-  const settleMutation = useMutation({
-    mutationFn: ({ otherUserId, direction }: { otherUserId: number; direction: 'IOwe' | 'OweMe' }) =>
-      transactionService.settlePairDebts(selectedGroupId!, otherUserId, direction),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-debts'] })
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+  // 全部群組債務統合
+  const { data: myDebtsAll } = useQuery<MyDebts>({
+    queryKey: ['my-debts', 'all'],
+    queryFn: async () => {
+      if (!showAll || !groups) return { iOwe: [], oweMe: [], totalIOwe: 0, totalOweMe: 0, net: 0 }
+      const perGroup = await Promise.all(groups.map(g => reportService.getMyDebts(g.id)))
+      const agg = {
+        iOwe: new Map<number, { userId: number; username: string; amount: number }>(),
+        oweMe: new Map<number, { userId: number; username: string; amount: number }>(),
+        totalIOwe: 0,
+        totalOweMe: 0,
+      }
+      for (const d of perGroup) {
+        agg.totalIOwe += d.totalIOwe
+        agg.totalOweMe += d.totalOweMe
+        for (const item of d.iOwe) {
+          agg.iOwe.set(item.userId, {
+            userId: item.userId,
+            username: item.username,
+            amount: (agg.iOwe.get(item.userId)?.amount || 0) + item.amount,
+          })
+        }
+        for (const item of d.oweMe) {
+          agg.oweMe.set(item.userId, {
+            userId: item.userId,
+            username: item.username,
+            amount: (agg.oweMe.get(item.userId)?.amount || 0) + item.amount,
+          })
+        }
+      }
+      return {
+        iOwe: Array.from(agg.iOwe.values()).sort((a, b) => b.amount - a.amount),
+        oweMe: Array.from(agg.oweMe.values()).sort((a, b) => b.amount - a.amount),
+        totalIOwe: agg.totalIOwe,
+        totalOweMe: agg.totalOweMe,
+        net: agg.totalOweMe - agg.totalIOwe,
+      }
     },
+    enabled: showAll && !!groups,
   })
+
+  // 結清功能已移除
 
   if (groupsLoading) {
     return (
@@ -55,15 +108,34 @@ function DashboardPage() {
     return <div className="rounded border bg-card p-4 text-sm text-muted-foreground">尚未加入任何群組，請先創建或加入群組</div>
   }
 
-  if (!selectedGroupId && groups.length > 0) {
+  // 初始預設為全部；若使用者切換到單一群組且尚未選擇，則自動選第一個
+  if (!showAll && !selectedGroupId && groups.length > 0) {
     setSelectedGroupId(groups[0].id)
   }
 
-  const recentTransactions = transactions?.slice(0, 5) || []
+  const usingTransactions = showAll ? allTransactions : groupTransactions
+  const transactionsLoading = showAll ? allTxLoading : groupTxLoading
+  const myDebts = showAll ? myDebtsAll : myDebtsSingle
+  const recentTransactions = usingTransactions?.slice(0, 5) || []
 
   return (
     <div>
       <h2 className="text-2xl font-semibold">儀表板</h2>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => { setShowAll(true); }}
+          className={`rounded px-3 py-1 text-sm border ${showAll ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
+        >全部</button>
+  {(groups ?? []).map(g => (
+          <button
+            key={g.id}
+            type="button"
+            onClick={() => { setShowAll(false); setSelectedGroupId(g.id) }}
+            className={`rounded px-3 py-1 text-sm border ${!showAll && selectedGroupId === g.id ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
+          >{g.name}</button>
+        ))}
+      </div>
 
       {myDebts && (
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -102,13 +174,6 @@ function DashboardPage() {
                       <span>{item.username}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-red-600">${item.amount.toFixed(2)}</span>
-                        <button
-                          className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
-                          onClick={() => settleMutation.mutate({ otherUserId: item.userId, direction: 'IOwe' })}
-                          disabled={settleMutation.isPending}
-                        >
-                          {settleMutation.isPending ? '處理中...' : '結清'}
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -128,13 +193,6 @@ function DashboardPage() {
                       <span>{item.username}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-green-600">${item.amount.toFixed(2)}</span>
-                        <button
-                          className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
-                          onClick={() => settleMutation.mutate({ otherUserId: item.userId, direction: 'OweMe' })}
-                          disabled={settleMutation.isPending}
-                        >
-                          {settleMutation.isPending ? '處理中...' : '結清'}
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -161,6 +219,9 @@ function DashboardPage() {
                   <div key={transaction.id} className="py-2">
                     <div className="text-sm">
                       {transaction.categoryIcon} {transaction.categoryName} - ${transaction.amount}
+                      {showAll && transaction.groupName && (
+                        <span className="ml-2 rounded bg-muted px-1 py-0.5 text-xs">{transaction.groupName}</span>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(transaction.date).toLocaleDateString('zh-TW')} - {transaction.description}

@@ -13,7 +13,8 @@ import { categoryService } from '../services/categoryService'
 import { useAuth } from '@/hooks/useAuth'
 
 function TransactionsPage() {
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
+  // 列表顯示全部群組交易，不再需要外層的 selectedGroupId
+  // 在建立 / 編輯對話框中選擇群組
   const [openDialog, setOpenDialog] = useState(false)
   const [createError, setCreateError] = useState<string>('')
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -50,13 +51,19 @@ function TransactionsPage() {
     queryFn: () => groupService.getUserGroups(),
   })
 
+  // 取得全部群組的交易並彙整排序
   const { data: transactions, isLoading } = useQuery({
-    queryKey: ['transactions', selectedGroupId],
-    queryFn: () => {
-      if (!selectedGroupId) return Promise.resolve([])
-      return transactionService.getTransactions(selectedGroupId)
+    queryKey: ['transactions', 'all'],
+    queryFn: async () => {
+      if (!groups) return []
+      const perGroup = await Promise.all(groups.map(g => transactionService.getTransactions(g.id)))
+      const groupMap = new Map(groups.map(g => [g.id, g.name]))
+      return perGroup
+        .flat()
+        .map(t => ({ ...t, groupName: t.groupName || groupMap.get(t.groupId) }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     },
-    enabled: !!selectedGroupId,
+    enabled: !!groups,
   })
 
   const { data: categories } = useQuery({
@@ -82,7 +89,7 @@ function TransactionsPage() {
       return transactionService.createTransaction(data)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'all'] })
       queryClient.invalidateQueries({ queryKey: ['report'] })
       setOpenDialog(false)
       setCreateError('')
@@ -97,7 +104,7 @@ function TransactionsPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => transactionService.updateTransaction(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'all'] })
       queryClient.invalidateQueries({ queryKey: ['report'] })
       setOpenDialog(false)
       setCreateError('')
@@ -106,7 +113,7 @@ function TransactionsPage() {
       // 若編輯後有新收據檔案，另外上傳一次（僅支援創建者）
       if (receiptFile && editingId) {
         transactionService.uploadReceipt(editingId, receiptFile)
-          .then(() => queryClient.invalidateQueries({ queryKey: ['transactions'] }))
+          .then(() => queryClient.invalidateQueries({ queryKey: ['transactions', 'all'] }))
           .catch(err => console.error('收據上傳失敗', err))
           .finally(() => setReceiptFile(null))
       }
@@ -120,14 +127,14 @@ function TransactionsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => transactionService.deleteTransaction(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'all'] })
       queryClient.invalidateQueries({ queryKey: ['report'] })
     },
   })
 
   const resetForm = () => {
     setFormData({
-      groupId: selectedGroupId || 0,
+      groupId: 0,
       categoryId: 0,
       payerUserId: user?.id || 0,
       borrowerUserId: 0,
@@ -141,21 +148,15 @@ function TransactionsPage() {
   }
 
   const handleOpenDialog = () => {
-    if (!selectedGroupId) {
-      alert('請先選擇群組')
-      return
-    }
     setEditingId(null)
     resetForm()
-    setFormData((prev) => ({ ...prev, groupId: selectedGroupId }))
     setOpenDialog(true)
   }
 
   const handleEdit = (tx: any) => {
-    if (!selectedGroupId) return
     setEditingId(tx.id)
     setFormData({
-      groupId: selectedGroupId,
+      groupId: tx.groupId,
       categoryId: tx.categoryId,
       payerUserId: tx.userId,
       borrowerUserId: tx.splits?.[0]?.userId || 0,
@@ -204,34 +205,18 @@ function TransactionsPage() {
     return <div className="rounded border bg-card p-4 text-sm text-muted-foreground">請先創建或加入群組</div>
   }
 
-  if (!selectedGroupId && groups.length > 0) {
-    setSelectedGroupId(groups[0].id)
-  }
-
   const expenseCategories = categories?.filter((c) => c.type === 'Expense') || []
   const incomeCategories = categories?.filter((c) => c.type === 'Income') || []
 
-  const selectedGroup = useMemo(() => groups?.find(g => g.id === selectedGroupId) || null, [groups, selectedGroupId])
+  // 依據目前表單選取的群組取得對應成員（建立或編輯時使用）
+  const selectedGroup = useMemo(() => groups?.find(g => g.id === formData.groupId) || null, [groups, formData.groupId])
   const members = selectedGroup?.members || []
 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">記帳</h2>
+        <h2 className="text-2xl font-semibold">記帳（全部群組）</h2>
         <Button onClick={handleOpenDialog}>新增交易</Button>
-      </div>
-
-      <div className="mb-3">
-        <label className="mb-1 block text-sm text-muted-foreground">選擇群組</label>
-        <select
-          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          value={selectedGroupId || ''}
-          onChange={(e) => setSelectedGroupId(Number(e.target.value))}
-        >
-          {groups.map((group) => (
-            <option key={group.id} value={group.id}>{group.name}</option>
-          ))}
-        </select>
       </div>
 
       {isLoading ? (
@@ -279,7 +264,14 @@ function TransactionsPage() {
                       '-'
                     )}
                   </TableCell>
-                  <TableCell>{transaction.userName}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{transaction.userName}</span>
+                      {transaction.groupName && (
+                        <span className="text-xs text-muted-foreground">{transaction.groupName}</span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="space-x-2">
                     <Button variant="secondary" size="sm" onClick={() => handleEdit(transaction)}>編輯</Button>
                     <Button variant="destructive" size="sm" onClick={() => handleDelete(transaction.id)}>刪除</Button>
@@ -351,6 +343,28 @@ function TransactionsPage() {
             <DialogTitle>{editingId ? '編輯交易' : '新增交易'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="group">群組</Label>
+              <select
+                id="group"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={formData.groupId}
+                onChange={(e) => {
+                  const newGroupId = Number(e.target.value)
+                  setFormData({
+                    ...formData,
+                    groupId: newGroupId,
+                    payerUserId: user?.id || 0, // 重置墊款者
+                    borrowerUserId: 0, // 重置借款者
+                  })
+                }}
+              >
+                <option value={0}>選擇群組</option>
+                {groups?.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="amount">金額</Label>
               <Input

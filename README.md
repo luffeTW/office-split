@@ -8,7 +8,6 @@
 債主版/
 ├── backend/              # .NET Core Web API
 ├── frontend/            # React + TypeScript Web 應用
-├── mobile/              # React Native 移動應用
 ├── database/            # 資料庫相關檔案
 └── docker/              # Docker 配置
 ```
@@ -28,11 +27,6 @@
 - React Query
 - Material-UI
 
-### 移動應用
-- React Native + TypeScript
-- React Navigation
-- Axios
-- AsyncStorage
 
 ### 資料庫
 - PostgreSQL 15+
@@ -105,28 +99,6 @@ npm install
 npm run dev
 ```
 
-#### 移動應用
-
-1. 確保已安裝 React Native 開發環境
-
-2. 進入移動應用目錄：
-```bash
-cd mobile
-```
-
-3. 安裝依賴：
-```bash
-npm install
-```
-
-4. 啟動 Metro bundler：
-```bash
-npm start
-```
-
-5. 在另一個終端運行：
-   - iOS: `npm run ios`
-   - Android: `npm run android`
 
 ## 環境變數
 
@@ -155,7 +127,6 @@ npm start
 - ✅ 自動分帳（等比例分配）
 - ✅ 報表查詢（統計、圖表）
 - ✅ 報表匯出（CSV、Excel）
-- ✅ 移動應用支援
 
 ### 新增功能（邀請與收據）
 - ✅ 邀請連結 / QR Code：群組擁有者或管理員可產生邀請代碼（可設定有效期與使用次數），他人可透過「/join?token=...」自行加入。
@@ -199,8 +170,7 @@ npm start
 
 1. 生產環境請務必修改 JWT 密鑰
 2. 生產環境請使用強密碼的資料庫連接
-3. 移動應用需要配置正確的 API 基礎 URL
-4. 建議使用環境變數管理敏感資訊
+3. 建議使用環境變數管理敏感資訊
 
 ## 使用說明：墊款者（Advance / Paid by）
 

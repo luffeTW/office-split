@@ -17,11 +17,19 @@ public class ReportService : IReportService
         _groupService = groupService;
     }
 
-    public async Task<ReportDto> GetGroupReportAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<ReportDto> GetGroupReportAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null, int? categoryId = null)
     {
         var isMember = await _groupService.IsUserMemberOfGroupAsync(groupId, userId);
         if (!isMember)
             throw new UnauthorizedAccessException("無權限查看此群組的報表");
+
+        // Normalize date filters to UTC day boundaries: start inclusive, end exclusive
+        DateTime? startInclusiveUtc = startDate.HasValue
+            ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc)
+            : (DateTime?)null;
+        DateTime? endExclusiveUtc = endDate.HasValue
+            ? DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc)
+            : (DateTime?)null;
 
         var query = _context.Transactions
             .Where(t => t.GroupId == groupId)
@@ -29,11 +37,14 @@ public class ReportService : IReportService
             .Include(t => t.Splits)
             .AsQueryable();
 
-        if (startDate.HasValue)
-            query = query.Where(t => t.Date >= startDate.Value);
+        if (startInclusiveUtc.HasValue)
+            query = query.Where(t => t.Date >= startInclusiveUtc.Value);
 
-        if (endDate.HasValue)
-            query = query.Where(t => t.Date <= endDate.Value);
+        if (endExclusiveUtc.HasValue)
+            query = query.Where(t => t.Date < endExclusiveUtc.Value);
+
+        if (categoryId.HasValue)
+            query = query.Where(t => t.CategoryId == categoryId.Value);
 
         var transactions = await query.ToListAsync();
 
@@ -77,10 +88,15 @@ public class ReportService : IReportService
             .ToList();
 
         // User balances
-        var userBalances = await _context.Splits
-            .Where(s => s.Transaction.GroupId == groupId && 
-                       (startDate == null || s.Transaction.Date >= startDate) &&
-                       (endDate == null || s.Transaction.Date <= endDate))
+        var userBalanceQuery = _context.Splits
+            .Where(s => s.Transaction.GroupId == groupId &&
+                       (startInclusiveUtc == null || s.Transaction.Date >= startInclusiveUtc) &&
+                       (endExclusiveUtc == null || s.Transaction.Date < endExclusiveUtc));
+
+        if (categoryId.HasValue)
+            userBalanceQuery = userBalanceQuery.Where(s => s.Transaction.CategoryId == categoryId.Value);
+
+        var userBalances = await userBalanceQuery
             .Include(s => s.User)
             .Include(s => s.Transaction)
             .GroupBy(s => new { s.UserId, s.User.Username })
@@ -105,16 +121,29 @@ public class ReportService : IReportService
         };
     }
 
-    public async Task<MyDebtsDto> GetMyDebtsAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<MyDebtsDto> GetMyDebtsAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null, int? categoryId = null)
     {
         var isMember = await _groupService.IsUserMemberOfGroupAsync(groupId, userId);
         if (!isMember)
             throw new UnauthorizedAccessException("無權限查看此群組的帳務");
 
-        var splits = await _context.Splits
+        // Normalize date filters to UTC day boundaries
+        DateTime? startInclusiveUtc = startDate.HasValue
+            ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc)
+            : (DateTime?)null;
+        DateTime? endExclusiveUtc = endDate.HasValue
+            ? DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc)
+            : (DateTime?)null;
+
+        var splitsQuery = _context.Splits
             .Where(s => s.Transaction.GroupId == groupId &&
-                   (startDate == null || s.Transaction.Date >= startDate) &&
-                   (endDate == null || s.Transaction.Date <= endDate))
+                   (startInclusiveUtc == null || s.Transaction.Date >= startInclusiveUtc) &&
+                   (endExclusiveUtc == null || s.Transaction.Date < endExclusiveUtc));
+
+        if (categoryId.HasValue)
+            splitsQuery = splitsQuery.Where(s => s.Transaction.CategoryId == categoryId.Value);
+
+        var splits = await splitsQuery
             .Include(s => s.User) // 借款者
             .Include(s => s.Transaction)
                 .ThenInclude(t => t.User) // 墊款者
@@ -153,11 +182,19 @@ public class ReportService : IReportService
         };
     }
 
-    public async Task<byte[]> ExportReportToCsvAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<byte[]> ExportReportToCsvAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null, int? categoryId = null)
     {
         var isMember = await _groupService.IsUserMemberOfGroupAsync(groupId, userId);
         if (!isMember)
             throw new UnauthorizedAccessException("無權限匯出此群組的報表");
+
+        // Normalize date filters to UTC day boundaries
+        DateTime? startInclusiveUtc = startDate.HasValue
+            ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc)
+            : (DateTime?)null;
+        DateTime? endExclusiveUtc = endDate.HasValue
+            ? DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc)
+            : (DateTime?)null;
 
         var query = _context.Transactions
             .Where(t => t.GroupId == groupId)
@@ -166,11 +203,14 @@ public class ReportService : IReportService
             .Include(t => t.Group)
             .AsQueryable();
 
-        if (startDate.HasValue)
-            query = query.Where(t => t.Date >= startDate.Value);
+        if (startInclusiveUtc.HasValue)
+            query = query.Where(t => t.Date >= startInclusiveUtc.Value);
 
-        if (endDate.HasValue)
-            query = query.Where(t => t.Date <= endDate.Value);
+        if (endExclusiveUtc.HasValue)
+            query = query.Where(t => t.Date < endExclusiveUtc.Value);
+
+        if (categoryId.HasValue)
+            query = query.Where(t => t.CategoryId == categoryId.Value);
 
         var transactions = await query
             .OrderBy(t => t.Date)
@@ -187,11 +227,19 @@ public class ReportService : IReportService
         return Encoding.UTF8.GetBytes(csv.ToString());
     }
 
-    public async Task<byte[]> ExportReportToExcelAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<byte[]> ExportReportToExcelAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null, int? categoryId = null)
     {
         var isMember = await _groupService.IsUserMemberOfGroupAsync(groupId, userId);
         if (!isMember)
             throw new UnauthorizedAccessException("無權限匯出此群組的報表");
+
+        // Normalize date filters to UTC day boundaries
+        DateTime? startInclusiveUtc = startDate.HasValue
+            ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc)
+            : (DateTime?)null;
+        DateTime? endExclusiveUtc = endDate.HasValue
+            ? DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc)
+            : (DateTime?)null;
 
         var query = _context.Transactions
             .Where(t => t.GroupId == groupId)
@@ -202,11 +250,14 @@ public class ReportService : IReportService
                 .ThenInclude(s => s.User)
             .AsQueryable();
 
-        if (startDate.HasValue)
-            query = query.Where(t => t.Date >= startDate.Value);
+        if (startInclusiveUtc.HasValue)
+            query = query.Where(t => t.Date >= startInclusiveUtc.Value);
 
-        if (endDate.HasValue)
-            query = query.Where(t => t.Date <= endDate.Value);
+        if (endExclusiveUtc.HasValue)
+            query = query.Where(t => t.Date < endExclusiveUtc.Value);
+
+        if (categoryId.HasValue)
+            query = query.Where(t => t.CategoryId == categoryId.Value);
 
         var transactions = await query
             .OrderBy(t => t.Date)

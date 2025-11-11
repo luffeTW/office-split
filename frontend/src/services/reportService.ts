@@ -51,11 +51,13 @@ export const reportService = {
   getGroupReport: async (
     groupId: number,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    categoryId?: number
   ): Promise<Report> => {
     const params: Record<string, string> = {}
     if (startDate) params.startDate = startDate
     if (endDate) params.endDate = endDate
+    if (categoryId !== undefined) params.categoryId = String(categoryId)
     const response = await apiClient.get<Report>(`/reports/group/${groupId}`, { params })
     return response.data
   },
@@ -63,11 +65,13 @@ export const reportService = {
   exportToCsv: async (
     groupId: number,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    categoryId?: number
   ): Promise<Blob> => {
     const params: Record<string, string> = {}
     if (startDate) params.startDate = startDate
     if (endDate) params.endDate = endDate
+    if (categoryId !== undefined) params.categoryId = String(categoryId)
     const response = await apiClient.get(`/reports/group/${groupId}/export/csv`, {
       params,
       responseType: 'blob',
@@ -78,11 +82,13 @@ export const reportService = {
   exportToExcel: async (
     groupId: number,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    categoryId?: number
   ): Promise<Blob> => {
     const params: Record<string, string> = {}
     if (startDate) params.startDate = startDate
     if (endDate) params.endDate = endDate
+    if (categoryId !== undefined) params.categoryId = String(categoryId)
     const response = await apiClient.get(`/reports/group/${groupId}/export/excel`, {
       params,
       responseType: 'blob',
@@ -93,11 +99,13 @@ export const reportService = {
   getMyDebts: async (
     groupId: number,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    categoryId?: number
   ): Promise<MyDebts> => {
     const params: Record<string, string> = {}
     if (startDate) params.startDate = startDate
     if (endDate) params.endDate = endDate
+    if (categoryId !== undefined) params.categoryId = String(categoryId)
     const response = await apiClient.get<MyDebts>(`/reports/group/${groupId}/my-debts`, { params })
     return response.data
   },

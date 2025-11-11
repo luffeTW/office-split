@@ -29,12 +29,13 @@ public class ReportsController : ControllerBase
     public async Task<ActionResult<ReportDto>> GetGroupReport(
         int groupId,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int? categoryId = null)
     {
         var userId = GetUserId();
         try
         {
-            var report = await _reportService.GetGroupReportAsync(groupId, userId, startDate, endDate);
+            var report = await _reportService.GetGroupReportAsync(groupId, userId, startDate, endDate, categoryId);
             return Ok(report);
         }
         catch (UnauthorizedAccessException ex)
@@ -51,12 +52,13 @@ public class ReportsController : ControllerBase
     public async Task<ActionResult<MyDebtsDto>> GetMyDebts(
         int groupId,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int? categoryId = null)
     {
         var userId = GetUserId();
         try
         {
-            var result = await _reportService.GetMyDebtsAsync(groupId, userId, startDate, endDate);
+            var result = await _reportService.GetMyDebtsAsync(groupId, userId, startDate, endDate, categoryId);
             return Ok(result);
         }
         catch (UnauthorizedAccessException ex)
@@ -73,12 +75,13 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> ExportReportToCsv(
         int groupId,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int? categoryId = null)
     {
         var userId = GetUserId();
         try
         {
-            var csvData = await _reportService.ExportReportToCsvAsync(groupId, userId, startDate, endDate);
+            var csvData = await _reportService.ExportReportToCsvAsync(groupId, userId, startDate, endDate, categoryId);
             return File(csvData, "text/csv", $"report_{groupId}_{DateTime.UtcNow:yyyyMMdd}.csv");
         }
         catch (UnauthorizedAccessException ex)
@@ -95,12 +98,13 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> ExportReportToExcel(
         int groupId,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int? categoryId = null)
     {
         var userId = GetUserId();
         try
         {
-            var excelData = await _reportService.ExportReportToExcelAsync(groupId, userId, startDate, endDate);
+            var excelData = await _reportService.ExportReportToExcelAsync(groupId, userId, startDate, endDate, categoryId);
             return File(excelData, 
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 $"report_{groupId}_{DateTime.UtcNow:yyyyMMdd}.xlsx");

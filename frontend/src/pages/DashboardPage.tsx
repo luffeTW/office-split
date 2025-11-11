@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { groupService } from '../services/groupService'
 import { transactionService } from '../services/transactionService'
+import { categoryService } from '../services/categoryService'
 import { reportService, MyDebts } from '../services/reportService'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -9,28 +10,48 @@ function DashboardPage() {
   // showAll 為 true 時代表顯示「全部群組」的統合狀態
   const [showAll, setShowAll] = useState<boolean>(true)
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
+  const [startDate, setStartDate] = useState<string>('')
+  const [endDate, setEndDate] = useState<string>('')
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | 'all'>('all')
 
   const { data: groups, isLoading: groupsLoading } = useQuery({
     queryKey: ['groups'],
     queryFn: () => groupService.getUserGroups(),
   })
 
+  const { data: categories } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => categoryService.getCategories(),
+  })
+
   // 單一群組交易
   const { data: groupTransactions, isLoading: groupTxLoading } = useQuery({
-    queryKey: ['transactions', selectedGroupId],
+    queryKey: ['transactions', selectedGroupId, startDate || null, endDate || null, selectedCategoryId === 'all' ? null : selectedCategoryId],
     queryFn: () => {
       if (!selectedGroupId || showAll) return Promise.resolve([])
-      return transactionService.getTransactions(selectedGroupId)
+      return transactionService.getTransactions(
+        selectedGroupId,
+        startDate || undefined,
+        endDate || undefined,
+        selectedCategoryId === 'all' ? undefined : selectedCategoryId
+      )
     },
     enabled: !!selectedGroupId && !showAll,
   })
 
   // 全部群組交易（僅在 showAll 時啟用）
   const { data: allTransactions, isLoading: allTxLoading } = useQuery({
-    queryKey: ['transactions', 'all'],
+    queryKey: ['transactions', 'all', startDate || null, endDate || null, selectedCategoryId === 'all' ? null : selectedCategoryId],
     queryFn: async () => {
       if (!showAll || !groups) return []
-      const perGroup = await Promise.all(groups.map(g => transactionService.getTransactions(g.id)))
+      const perGroup = await Promise.all(
+        groups.map(g => transactionService.getTransactions(
+          g.id,
+          startDate || undefined,
+          endDate || undefined,
+          selectedCategoryId === 'all' ? undefined : selectedCategoryId
+        ))
+      )
       const groupMap = new Map(groups.map(g => [g.id, g.name]))
       return perGroup
         .flat()
@@ -44,21 +65,31 @@ function DashboardPage() {
 
   // 單一群組債務
   const { data: myDebtsSingle } = useQuery<MyDebts>({
-    queryKey: ['my-debts', selectedGroupId],
+    queryKey: ['my-debts', selectedGroupId, startDate || null, endDate || null, selectedCategoryId === 'all' ? null : selectedCategoryId],
     queryFn: () => {
       if (!selectedGroupId || showAll)
         return Promise.resolve({ iOwe: [], oweMe: [], totalIOwe: 0, totalOweMe: 0, net: 0 })
-      return reportService.getMyDebts(selectedGroupId)
+      return reportService.getMyDebts(
+        selectedGroupId,
+        startDate || undefined,
+        endDate || undefined,
+        selectedCategoryId === 'all' ? undefined : selectedCategoryId
+      )
     },
     enabled: !!selectedGroupId && !showAll,
   })
 
   // 全部群組債務統合
   const { data: myDebtsAll } = useQuery<MyDebts>({
-    queryKey: ['my-debts', 'all'],
+    queryKey: ['my-debts', 'all', startDate || null, endDate || null, selectedCategoryId === 'all' ? null : selectedCategoryId],
     queryFn: async () => {
       if (!showAll || !groups) return { iOwe: [], oweMe: [], totalIOwe: 0, totalOweMe: 0, net: 0 }
-      const perGroup = await Promise.all(groups.map(g => reportService.getMyDebts(g.id)))
+      const perGroup = await Promise.all(groups.map(g => reportService.getMyDebts(
+        g.id,
+        startDate || undefined,
+        endDate || undefined,
+        selectedCategoryId === 'all' ? undefined : selectedCategoryId
+      )))
       const agg = {
         iOwe: new Map<number, { userId: number; username: string; amount: number }>(),
         oweMe: new Map<number, { userId: number; username: string; amount: number }>(),
@@ -116,25 +147,61 @@ function DashboardPage() {
   const usingTransactions = showAll ? allTransactions : groupTransactions
   const transactionsLoading = showAll ? allTxLoading : groupTxLoading
   const myDebts = showAll ? myDebtsAll : myDebtsSingle
-  const recentTransactions = usingTransactions?.slice(0, 5) || []
+  const recentTransactions = (usingTransactions || []).slice(0, 5)
 
   return (
     <div>
       <h2 className="text-2xl font-semibold">儀表板</h2>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => { setShowAll(true); }}
-          className={`rounded px-3 py-1 text-sm border ${showAll ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
-        >全部</button>
-  {(groups ?? []).map(g => (
-          <button
-            key={g.id}
-            type="button"
-            onClick={() => { setShowAll(false); setSelectedGroupId(g.id) }}
-            className={`rounded px-3 py-1 text-sm border ${!showAll && selectedGroupId === g.id ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
-          >{g.name}</button>
-        ))}
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div>
+          <label className="mb-1 block text-sm text-muted-foreground">群組</label>
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={showAll ? 'all' : String(selectedGroupId || '')}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val === 'all') {
+                setShowAll(true)
+              } else {
+                setShowAll(false)
+                setSelectedGroupId(Number(val))
+              }
+            }}
+          >
+            <option value="all">全部</option>
+            {(groups ?? []).map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-muted-foreground">開始日期</label>
+          <input type="date" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-muted-foreground">結束日期</label>
+          <input type="date" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-muted-foreground">分類</label>
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={selectedCategoryId === 'all' ? 'all' : String(selectedCategoryId)}
+            onChange={(e) => {
+              const val = e.target.value
+              setSelectedCategoryId(val === 'all' ? 'all' : Number(val))
+            }}
+          >
+            <option value="all">全部</option>
+            {(categories ?? []).map(c => (
+              <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {myDebts && (

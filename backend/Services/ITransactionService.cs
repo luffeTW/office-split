@@ -4,7 +4,7 @@ namespace backend.Services;
 
 public interface ITransactionService
 {
-    Task<List<TransactionDto>> GetTransactionsAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null);
+    Task<List<TransactionDto>> GetTransactionsAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null, int? categoryId = null);
     Task<TransactionDto?> GetTransactionByIdAsync(int id, int userId);
     Task<TransactionDto> CreateTransactionAsync(CreateTransactionDto createDto, int userId);
     Task<TransactionDto?> UpdateTransactionAsync(int id, UpdateTransactionDto updateDto, int userId);

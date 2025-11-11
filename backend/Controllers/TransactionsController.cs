@@ -176,12 +176,13 @@ public class TransactionsController : ControllerBase
     public async Task<ActionResult<List<TransactionDto>>> GetTransactions(
         int groupId,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int? categoryId = null)
     {
         var userId = GetUserId();
         try
         {
-            var transactions = await _transactionService.GetTransactionsAsync(groupId, userId, startDate, endDate);
+            var transactions = await _transactionService.GetTransactionsAsync(groupId, userId, startDate, endDate, categoryId);
             return Ok(transactions);
         }
         catch (UnauthorizedAccessException ex)

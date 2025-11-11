@@ -15,11 +15,19 @@ public class TransactionService : ITransactionService
         _groupService = groupService;
     }
 
-    public async Task<List<TransactionDto>> GetTransactionsAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<List<TransactionDto>> GetTransactionsAsync(int groupId, int userId, DateTime? startDate = null, DateTime? endDate = null, int? categoryId = null)
     {
         var isMember = await _groupService.IsUserMemberOfGroupAsync(groupId, userId);
         if (!isMember)
             throw new UnauthorizedAccessException("無權限查看此群組的交易");
+
+        // Normalize date filters to UTC day boundaries: start inclusive, end exclusive
+        DateTime? startInclusiveUtc = startDate.HasValue
+            ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc)
+            : (DateTime?)null;
+        DateTime? endExclusiveUtc = endDate.HasValue
+            ? DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc)
+            : (DateTime?)null;
 
         var query = _context.Transactions
             .Where(t => t.GroupId == groupId)
@@ -30,11 +38,14 @@ public class TransactionService : ITransactionService
                 .ThenInclude(s => s.User)
             .AsQueryable();
 
-        if (startDate.HasValue)
-            query = query.Where(t => t.Date >= startDate.Value);
+        if (startInclusiveUtc.HasValue)
+            query = query.Where(t => t.Date >= startInclusiveUtc.Value);
 
-        if (endDate.HasValue)
-            query = query.Where(t => t.Date <= endDate.Value);
+        if (endExclusiveUtc.HasValue)
+            query = query.Where(t => t.Date < endExclusiveUtc.Value);
+
+        if (categoryId.HasValue)
+            query = query.Where(t => t.CategoryId == categoryId.Value);
 
         return await query
             .OrderByDescending(t => t.Date)
@@ -228,7 +239,9 @@ public class TransactionService : ITransactionService
         if (updateDto.Date.HasValue)
         {
             var d = updateDto.Date.Value;
-            transaction.Date = d.Kind == DateTimeKind.Utc ? d : DateTime.SpecifyKind(d, DateTimeKind.Utc);
+            // Treat provided date as date-only at UTC midnight for consistency
+            var normalized = DateTime.SpecifyKind(d.Date, DateTimeKind.Utc);
+            transaction.Date = normalized;
         }
 
         if (!string.IsNullOrWhiteSpace(updateDto.ReceiptUrl))

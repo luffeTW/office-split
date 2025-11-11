@@ -59,11 +59,13 @@ export const transactionService = {
   getTransactions: async (
     groupId: number,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    categoryId?: number
   ): Promise<Transaction[]> => {
     const params: Record<string, string> = {}
     if (startDate) params.startDate = startDate
     if (endDate) params.endDate = endDate
+    if (categoryId !== undefined) params.categoryId = String(categoryId)
     const response = await apiClient.get<Transaction[]>(`/transactions/group/${groupId}`, { params })
     return response.data
   },

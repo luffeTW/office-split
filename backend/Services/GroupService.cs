@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using backend.Data;
+using Npgsql;
 using backend.Models;
 
 namespace backend.Services;
@@ -251,5 +252,180 @@ public class GroupService : IGroupService
             .AnyAsync(gm => gm.GroupId == groupId && 
                           gm.UserId == userId && 
                           (gm.Role == "Owner" || gm.Role == "Admin"));
+    }
+
+    public async Task<GroupInviteDto> CreateInviteAsync(int groupId, int userId, int? ttlHours, int? maxUses)
+    {
+        var isOwnerOrAdmin = await IsUserOwnerOrAdminAsync(groupId, userId);
+        if (!isOwnerOrAdmin)
+            throw new UnauthorizedAccessException("無權限建立邀請");
+
+        var token = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+                        .TrimEnd('=')
+                        .Replace('+', '-')
+                        .Replace('/', '_');
+
+        var invite = new GroupInvite
+        {
+            GroupId = groupId,
+            CreatedBy = userId,
+            Token = token,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = ttlHours.HasValue ? DateTime.UtcNow.AddHours(ttlHours.Value) : null,
+            MaxUses = maxUses,
+            Uses = 0,
+            IsActive = true
+        };
+
+        _context.GroupInvites.Add(invite);
+        await _context.SaveChangesAsync();
+
+        var group = await _context.Groups.FindAsync(groupId) ?? throw new Exception("群組不存在");
+        return new GroupInviteDto
+        {
+            Id = invite.Id,
+            GroupId = groupId,
+            GroupName = group.Name,
+            Token = invite.Token,
+            CreatedAt = invite.CreatedAt,
+            ExpiresAt = invite.ExpiresAt,
+            MaxUses = invite.MaxUses,
+            Uses = invite.Uses,
+            IsActive = invite.IsActive
+        };
+    }
+
+    public async Task<GroupInviteDto?> GetInviteInfoAsync(string token)
+    {
+        var invite = await _context.GroupInvites
+            .Include(i => i.Group)
+            .FirstOrDefaultAsync(i => i.Token == token);
+        if (invite == null) return null;
+
+        return new GroupInviteDto
+        {
+            Id = invite.Id,
+            GroupId = invite.GroupId,
+            GroupName = invite.Group.Name,
+            Token = invite.Token,
+            CreatedAt = invite.CreatedAt,
+            ExpiresAt = invite.ExpiresAt,
+            MaxUses = invite.MaxUses,
+            Uses = invite.Uses,
+            IsActive = invite.IsActive
+        };
+    }
+
+    public async Task<JoinByTokenResultDto> JoinByTokenAsync(string token, int userId)
+    {
+        var invite = await _context.GroupInvites.FirstOrDefaultAsync(i => i.Token == token);
+        if (invite == null)
+            return new JoinByTokenResultDto { Joined = false, Message = "邀請不存在" };
+
+        if (!invite.IsActive)
+            return new JoinByTokenResultDto { GroupId = invite.GroupId, Joined = false, Message = "邀請已停用" };
+
+        if (invite.ExpiresAt.HasValue && invite.ExpiresAt.Value < DateTime.UtcNow)
+            return new JoinByTokenResultDto { GroupId = invite.GroupId, Joined = false, Message = "邀請已過期" };
+
+        if (invite.MaxUses.HasValue && invite.Uses >= invite.MaxUses.Value)
+            return new JoinByTokenResultDto { GroupId = invite.GroupId, Joined = false, Message = "邀請次數已用完" };
+
+        // 已是成員則直接回傳
+        var alreadyMember = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == invite.GroupId && gm.UserId == userId);
+        if (alreadyMember)
+        {
+            var g = await _context.Groups.FindAsync(invite.GroupId);
+            return new JoinByTokenResultDto { GroupId = invite.GroupId, GroupName = g?.Name ?? "", Joined = true, Message = "已在群組中" };
+        }
+
+        // 嘗試以交易處理，避免並發下重複插入造成唯一鍵衝突
+        using var tx = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // 交易中再次確認，避免競態
+            var alreadyInTx = await _context.GroupMembers.AnyAsync(gm => gm.GroupId == invite.GroupId && gm.UserId == userId);
+            if (alreadyInTx)
+            {
+                await tx.CommitAsync();
+                var g0 = await _context.Groups.FindAsync(invite.GroupId);
+                return new JoinByTokenResultDto { GroupId = invite.GroupId, GroupName = g0?.Name ?? string.Empty, Joined = true, Message = "已在群組中" };
+            }
+
+            // 加入成員
+            var member = new GroupMember
+            {
+                GroupId = invite.GroupId,
+                UserId = userId,
+                Role = "Member",
+                JoinedAt = DateTime.UtcNow
+            };
+            _context.GroupMembers.Add(member);
+
+            // 更新邀請使用次數（以實際成功加入為準）
+            invite.Uses += 1;
+            if (invite.MaxUses.HasValue && invite.Uses >= invite.MaxUses.Value)
+            {
+                invite.IsActive = false; // 用罄後自動失效
+            }
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            var group = await _context.Groups.FindAsync(invite.GroupId);
+            return new JoinByTokenResultDto
+            {
+                GroupId = invite.GroupId,
+                GroupName = group?.Name ?? string.Empty,
+                Joined = true,
+                Message = "加入成功"
+            };
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException pex && pex.SqlState == "23505")
+        {
+            // 唯一鍵衝突（GroupId,UserId）視為已加入，回傳成功避免使用者看到錯誤
+            await tx.RollbackAsync();
+            var g = await _context.Groups.FindAsync(invite.GroupId);
+            return new JoinByTokenResultDto { GroupId = invite.GroupId, GroupName = g?.Name ?? string.Empty, Joined = true, Message = "已在群組中" };
+        }
+    }
+
+    public async Task<List<GroupInviteDto>> ListInvitesAsync(int groupId, int userId)
+    {
+        var isOwnerOrAdmin = await IsUserOwnerOrAdminAsync(groupId, userId);
+        if (!isOwnerOrAdmin)
+            throw new UnauthorizedAccessException("無權限查看邀請");
+
+        return await _context.GroupInvites
+            .Where(i => i.GroupId == groupId)
+            .OrderByDescending(i => i.CreatedAt)
+            .Select(invite => new GroupInviteDto
+            {
+                Id = invite.Id,
+                GroupId = invite.GroupId,
+                GroupName = invite.Group.Name,
+                Token = invite.Token,
+                CreatedAt = invite.CreatedAt,
+                ExpiresAt = invite.ExpiresAt,
+                MaxUses = invite.MaxUses,
+                Uses = invite.Uses,
+                IsActive = invite.IsActive
+            }).ToListAsync();
+    }
+
+    public async Task<bool> DeactivateInviteAsync(string token, int userId)
+    {
+        var invite = await _context.GroupInvites.FirstOrDefaultAsync(i => i.Token == token);
+        if (invite == null) return false;
+
+        var isOwnerOrAdmin = await IsUserOwnerOrAdminAsync(invite.GroupId, userId);
+        if (!isOwnerOrAdmin)
+            throw new UnauthorizedAccessException("無權限停用邀請");
+
+        if (!invite.IsActive) return true; // already inactive
+        invite.IsActive = false;
+        await _context.SaveChangesAsync();
+        return true;
     }
 }

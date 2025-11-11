@@ -13,6 +13,7 @@ export interface Transaction {
   description?: string
   date: string
   createdAt: string
+  receiptUrl?: string
   splits?: Split[]
 }
 
@@ -37,6 +38,7 @@ export interface CreateTransactionDto {
   date: string
   splitUserIds?: number[]
   splitEqually: boolean
+  receiptUrl?: string
 }
 
 export interface UpdateTransactionDto {
@@ -46,6 +48,7 @@ export interface UpdateTransactionDto {
   date?: string
   payerUserId?: number
   borrowerUserId?: number
+  receiptUrl?: string
 }
 
 export interface UpdateSplitDto {
@@ -103,6 +106,22 @@ export const transactionService = {
     const payload: any = { otherUserId, direction }
     if (upToDate) payload.upToDate = upToDate
     const response = await apiClient.post<{ updated: number }>(`/transactions/group/${groupId}/settle-pair`, payload)
+    return response.data
+  },
+
+  createWithReceipt: async (form: FormData): Promise<Transaction> => {
+    const response = await apiClient.post<Transaction>(`/transactions/create-with-receipt`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
+  uploadReceipt: async (transactionId: number, file: File): Promise<Transaction> => {
+    const form = new FormData()
+    form.append('receipt', file)
+    const response = await apiClient.post<Transaction>(`/transactions/${transactionId}/receipt`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     return response.data
   },
 }

@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { groupService, CreateGroupDto, Group, AddMemberDto } from '../services/groupService'
+import { groupService, CreateGroupDto, Group, AddMemberDto, GroupInviteDto } from '../services/groupService'
+import { QRCodeCanvas } from 'qrcode.react'
 import { userService } from '../services/userService'
 import { useAuth } from '../hooks/useAuth'
 
@@ -15,6 +16,11 @@ function GroupsPage() {
   const [openDialog, setOpenDialog] = useState(false)
   const [openAddMemberDialog, setOpenAddMemberDialog] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
+  const [inviteInfo, setInviteInfo] = useState<GroupInviteDto | null>(null)
+  const [inviteLoadingId, setInviteLoadingId] = useState<number | null>(null)
+  const [joinToken, setJoinToken] = useState('')
+  const [invites, setInvites] = useState<Record<number, GroupInviteDto[]>>({})
+  const [loadingInvitesFor, setLoadingInvitesFor] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState('my-groups')
   const [formData, setFormData] = useState<CreateGroupDto>({
     name: '',
@@ -119,11 +125,65 @@ function GroupsPage() {
     addMemberMutation.mutate({ groupId: selectedGroupId, data: addMemberData })
   }
 
+  const handleCreateInvite = async (groupId: number) => {
+    setInviteLoadingId(groupId)
+    try {
+      const info = await groupService.createInvite(groupId, { ttlHours: 24, maxUses: 50 })
+      setInviteInfo(info)
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || '建立邀請失敗')
+    } finally {
+      setInviteLoadingId(null)
+    }
+  }
+
+  const loadInvites = async (groupId: number) => {
+    setLoadingInvitesFor(groupId)
+    try {
+      const list = await groupService.listInvites(groupId)
+      setInvites(prev => ({ ...prev, [groupId]: list }))
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || '讀取邀請失敗')
+    } finally {
+      setLoadingInvitesFor(null)
+    }
+  }
+
+  const deactivateInvite = async (groupId: number, token: string) => {
+    try {
+      await groupService.deactivateInvite(token)
+      await loadInvites(groupId)
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || '停用失敗')
+    }
+  }
+
+  const handleJoinByToken = async () => {
+    if (!joinToken) return
+    try {
+      const res = await groupService.joinByToken(joinToken.trim())
+      alert(res.message)
+      setJoinToken('')
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || '加入失敗')
+    }
+  }
+
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-2xl font-semibold">群組管理</h2>
-        <Button onClick={() => setOpenDialog(true)}>新增群組</Button>
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="輸入邀請代碼加入 (Token)"
+            value={joinToken}
+            onChange={(e) => setJoinToken(e.target.value)}
+            className="w-[260px]"
+          />
+          <Button variant="secondary" onClick={handleJoinByToken} disabled={!joinToken}>使用代碼加入</Button>
+          <Button onClick={() => setOpenDialog(true)}>新增群組</Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -163,13 +223,21 @@ function GroupsPage() {
                           ))}
                         </ul>
                         {isOwnerOrAdmin(group) && (
-                          <div className="mt-3">
+                          <div className="mt-3 flex items-center gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleOpenAddMember(group.id)}
                             >
                               新增成員
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={inviteLoadingId === group.id}
+                              onClick={() => handleCreateInvite(group.id)}
+                            >
+                              {inviteLoadingId === group.id ? '產生中...' : '產生邀請連結'}
                             </Button>
                           </div>
                         )}
@@ -180,6 +248,56 @@ function GroupsPage() {
                         </Button>
                       </div>
                     </div>
+                    {inviteInfo && inviteInfo.groupId === group.id && (
+                      <div className="mt-3 rounded border p-3 text-sm">
+                        <div className="mb-1 font-medium">邀請資訊</div>
+                        <div>Token: <span className="font-mono">{inviteInfo.token}</span></div>
+                        <div className="text-muted-foreground">
+                          {inviteInfo.expiresAt ? `有效至：${new Date(inviteInfo.expiresAt).toLocaleString('zh-TW')}` : '無期限'}
+                          {' ・ '}可用次數：{inviteInfo.maxUses ?? '不限'}（已用 {inviteInfo.uses}）
+                        </div>
+                        {/* 簡單分享連結，可配合實際前端域名 */}
+                        <div className="mt-2 break-words">
+                          連結：<span className="font-mono">{`${window.location.origin}/join?token=${inviteInfo.token}`}</span>
+                        </div>
+                        <div className="mt-2">
+                          <QRCodeCanvas value={`${window.location.origin}/join?token=${inviteInfo.token}`} size={128} includeMargin={true} />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadInvites(group.id)}
+                        disabled={loadingInvitesFor === group.id}
+                      >
+                        {loadingInvitesFor === group.id ? '載入中...' : '查看邀請清單'}
+                      </Button>
+                    </div>
+                    {invites[group.id] && invites[group.id].length > 0 && (
+                      <div className="mt-2 rounded border p-2 text-sm">
+                        <div className="mb-1 font-medium">有效/歷史邀請</div>
+                        <ul className="space-y-2">
+                          {invites[group.id].map((inv) => (
+                            <li key={inv.id} className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate font-mono">{inv.token}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {inv.isActive ? '啟用中' : '已停用'} ・ 已用 {inv.uses}/{inv.maxUses ?? '∞'} ・ {inv.expiresAt ? `有效至 ${new Date(inv.expiresAt).toLocaleString('zh-TW')}` : '無期限'}
+                                </div>
+                              </div>
+                              <div className="shrink-0">
+                                {inv.isActive && (
+                                  <Button size="sm" variant="destructive" onClick={() => deactivateInvite(group.id, inv.token)}>停用</Button>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}

@@ -27,6 +27,9 @@ public class Transaction
     public DateTime Date { get; set; } = DateTime.UtcNow;
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // 上傳收據檔案網址（相對或絕對）
+    public string? ReceiptUrl { get; set; }
     
     // Navigation properties
     public virtual Group Group { get; set; } = null!;

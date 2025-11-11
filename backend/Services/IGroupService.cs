@@ -14,4 +14,11 @@ public interface IGroupService
     Task<bool> RemoveMemberAsync(int groupId, int memberId, int userId);
     Task<bool> IsUserMemberOfGroupAsync(int groupId, int userId);
     Task<bool> IsUserOwnerOrAdminAsync(int groupId, int userId);
+
+    // Invites
+    Task<GroupInviteDto> CreateInviteAsync(int groupId, int userId, int? ttlHours, int? maxUses);
+    Task<GroupInviteDto?> GetInviteInfoAsync(string token);
+    Task<JoinByTokenResultDto> JoinByTokenAsync(string token, int userId);
+    Task<List<GroupInviteDto>> ListInvitesAsync(int groupId, int userId);
+    Task<bool> DeactivateInviteAsync(string token, int userId);
 }

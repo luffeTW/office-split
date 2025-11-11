@@ -20,7 +20,18 @@ function LoginPage() {
     try {
       const response = await authService.login({ username, password })
       login(response.token, response.user)
-      navigate('/')
+      // 若 URL 或 localStorage 有 pending 的 join token，登入後導向 /join
+      const url = new URL(window.location.href)
+      const tokenFromUrl = url.searchParams.get('token')
+      const pending = localStorage.getItem('pendingJoinToken')
+      if (tokenFromUrl) {
+        navigate(`/join?token=${encodeURIComponent(tokenFromUrl)}`)
+      } else if (pending) {
+        localStorage.removeItem('pendingJoinToken')
+        navigate(`/join?token=${encodeURIComponent(pending)}`)
+      } else {
+        navigate('/')
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || '登入失敗')
     }

@@ -32,7 +32,18 @@ function RegisterPage() {
     try {
       const response = await authService.register({ username, email, password })
       login(response.token, response.user)
-      navigate('/')
+      // 保留邀請加入流程：註冊後若有 token 或 pendingJoinToken 則導向 /join
+      const url = new URL(window.location.href)
+      const tokenFromUrl = url.searchParams.get('token')
+      const pending = localStorage.getItem('pendingJoinToken')
+      if (tokenFromUrl) {
+        navigate(`/join?token=${encodeURIComponent(tokenFromUrl)}`)
+      } else if (pending) {
+        localStorage.removeItem('pendingJoinToken')
+        navigate(`/join?token=${encodeURIComponent(pending)}`)
+      } else {
+        navigate('/')
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || '註冊失敗')
     }

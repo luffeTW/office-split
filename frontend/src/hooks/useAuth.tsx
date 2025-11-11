@@ -24,6 +24,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('user')
       }
     }
+    // 若尚未登入但 URL 有 token，暫存待登入
+    if (!token) {
+      const url = new URL(window.location.href)
+      const joinToken = url.searchParams.get('token')
+      if (joinToken) {
+        localStorage.setItem('pendingJoinToken', joinToken)
+      }
+    }
   }, [])
 
   const login = (token: string, userData: User) => {

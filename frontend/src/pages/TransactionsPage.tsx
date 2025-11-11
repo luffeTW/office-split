@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { groupService } from '../services/groupService'
+import { buildFileUrl } from '../lib/utils'
 import { transactionService, CreateTransactionDto } from '../services/transactionService'
 import { categoryService } from '../services/categoryService'
 import { useAuth } from '@/hooks/useAuth'
@@ -24,7 +25,9 @@ function TransactionsPage() {
     description: '',
     date: new Date().toISOString().split('T')[0],
     splitEqually: true,
+    receiptUrl: undefined,
   })
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
 
   const queryClient = useQueryClient()
   const { user } = useAuth()
@@ -49,7 +52,22 @@ function TransactionsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateTransactionDto) => transactionService.createTransaction(data),
+    mutationFn: async (data: CreateTransactionDto) => {
+      // 若有收據檔案，改用 multipart form 建立
+      if (receiptFile) {
+        const form = new FormData()
+        form.append('groupId', String(data.groupId))
+        form.append('categoryId', String(data.categoryId))
+        form.append('payerUserId', String(data.payerUserId))
+        form.append('borrowerUserId', String(data.borrowerUserId))
+        form.append('amount', String(data.amount))
+        if (data.description) form.append('description', data.description)
+        if (data.date) form.append('date', data.date)
+        form.append('Receipt', receiptFile)
+        return transactionService.createWithReceipt(form)
+      }
+      return transactionService.createTransaction(data)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['report'] })
@@ -72,6 +90,13 @@ function TransactionsPage() {
       setCreateError('')
       setEditingId(null)
       resetForm()
+      // 若編輯後有新收據檔案，另外上傳一次（僅支援創建者）
+      if (receiptFile && editingId) {
+        transactionService.uploadReceipt(editingId, receiptFile)
+          .then(() => queryClient.invalidateQueries({ queryKey: ['transactions'] }))
+          .catch(err => console.error('收據上傳失敗', err))
+          .finally(() => setReceiptFile(null))
+      }
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || '更新交易失敗'
@@ -97,7 +122,9 @@ function TransactionsPage() {
       description: '',
       date: new Date().toISOString().split('T')[0],
       splitEqually: true,
+      receiptUrl: undefined,
     })
+    setReceiptFile(null)
   }
 
   const handleOpenDialog = () => {
@@ -207,6 +234,7 @@ function TransactionsPage() {
                 <TableHead>類別</TableHead>
                 <TableHead>金額</TableHead>
                 <TableHead>描述</TableHead>
+                <TableHead>收據</TableHead>
                 <TableHead>建立者</TableHead>
                 <TableHead>操作</TableHead>
               </TableRow>
@@ -220,6 +248,23 @@ function TransactionsPage() {
                   </TableCell>
                   <TableCell>${transaction.amount.toFixed(2)}</TableCell>
                   <TableCell>{transaction.description || '-'}</TableCell>
+                  <TableCell>
+                    {transaction.receiptUrl ? (
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={buildFileUrl(transaction.receiptUrl)}
+                          target="_blank"
+                          className="text-blue-600 underline"
+                        >檢視</a>
+                        <img
+                          src={buildFileUrl(transaction.receiptUrl)}
+                          alt="收據"
+                          loading="lazy"
+                          className="h-10 w-auto rounded border bg-white object-contain"
+                        />
+                      </div>
+                    ) : '-'}
+                  </TableCell>
                   <TableCell>{transaction.userName}</TableCell>
                   <TableCell className="space-x-2">
                     <Button variant="secondary" size="sm" onClick={() => handleEdit(transaction)}>編輯</Button>
@@ -279,6 +324,15 @@ function TransactionsPage() {
               <Label htmlFor="description">描述</Label>
               <Input id="description" value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="receipt">收據（選擇圖片即可上傳）</Label>
+              <Input
+                id="receipt"
+                type="file"
+                accept="image/*"
+                onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="date">日期</Label>

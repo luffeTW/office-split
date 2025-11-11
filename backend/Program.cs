@@ -10,6 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddDirectoryBrowser();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -105,18 +107,27 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAll");
+// 提供靜態檔案（例如收據圖片）
+var wwwrootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+Directory.CreateDirectory(wwwrootPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    ServeUnknownFileTypes = false
+});
+// 可依需求開啟瀏覽目錄：app.UseDirectoryBrowser();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
+// Apply migrations & seed
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    dbContext.Database.EnsureCreated();
-    
-    // Seed initial data
+    // 使用遷移而非 EnsureCreated，避免覆蓋既有 schema，並保持 Migration 記錄
+    dbContext.Database.Migrate();
+
+    // Seed initial categories (idempotent)
     var categoryService = scope.ServiceProvider.GetRequiredService<ICategoryService>();
     await categoryService.SeedDefaultCategoriesAsync();
 }

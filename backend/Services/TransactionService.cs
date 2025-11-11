@@ -53,6 +53,7 @@ public class TransactionService : ITransactionService
                 Description = t.Description,
                 Date = t.Date,
                 CreatedAt = t.CreatedAt,
+                ReceiptUrl = t.ReceiptUrl,
                 Splits = t.Splits.Select(s => new SplitDto
                 {
                     Id = s.Id,
@@ -99,6 +100,7 @@ public class TransactionService : ITransactionService
             Description = transaction.Description,
             Date = transaction.Date,
             CreatedAt = transaction.CreatedAt,
+            ReceiptUrl = transaction.ReceiptUrl,
             Splits = transaction.Splits.Select(s => new SplitDto
             {
                 Id = s.Id,
@@ -151,7 +153,8 @@ public class TransactionService : ITransactionService
             Date = createDto.Date.Kind == DateTimeKind.Utc
                 ? createDto.Date
                 : DateTime.SpecifyKind(createDto.Date, DateTimeKind.Utc),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            ReceiptUrl = createDto.ReceiptUrl
         };
 
         _context.Transactions.Add(transaction);
@@ -226,6 +229,11 @@ public class TransactionService : ITransactionService
         {
             var d = updateDto.Date.Value;
             transaction.Date = d.Kind == DateTimeKind.Utc ? d : DateTime.SpecifyKind(d, DateTimeKind.Utc);
+        }
+
+        if (!string.IsNullOrWhiteSpace(updateDto.ReceiptUrl))
+        {
+            transaction.ReceiptUrl = updateDto.ReceiptUrl;
         }
 
         // 維持單一分帳模型：只有一個借款者 split
@@ -387,5 +395,22 @@ public class TransactionService : ITransactionService
         }
         await _context.SaveChangesAsync();
         return splits.Count;
+    }
+
+    public async Task<TransactionDto?> UploadReceiptAsync(int transactionId, int userId, string receiptUrl)
+    {
+        var transaction = await _context.Transactions.FindAsync(transactionId);
+        if (transaction == null) return null;
+
+        var isMember = await _groupService.IsUserMemberOfGroupAsync(transaction.GroupId, userId);
+        if (!isMember)
+            throw new UnauthorizedAccessException("無權限上傳此交易收據");
+
+        if (transaction.UserId != userId)
+            throw new UnauthorizedAccessException("只有創建者(墊款者)可以上傳或更新收據");
+
+        transaction.ReceiptUrl = receiptUrl;
+        await _context.SaveChangesAsync();
+        return await GetTransactionByIdAsync(transactionId, userId);
     }
 }

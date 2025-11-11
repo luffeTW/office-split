@@ -151,18 +151,49 @@ npm start
 - ✅ 群組管理（創建、編輯、成員管理）
 - ✅ 分類管理（收入/支出分類）
 - ✅ 記帳功能（新增、編輯、刪除交易）
-- ✅ 記帳功能（新增、編輯、刪除交易）
 - ✅ 支援指定「墊款者」（可對群組內任一成員新增墊款紀錄）
 - ✅ 自動分帳（等比例分配）
 - ✅ 報表查詢（統計、圖表）
 - ✅ 報表匯出（CSV、Excel）
 - ✅ 移動應用支援
 
+### 新增功能（邀請與收據）
+- ✅ 邀請連結 / QR Code：群組擁有者或管理員可產生邀請代碼（可設定有效期與使用次數），他人可透過「/join?token=...」自行加入。
+- ✅ 自動加入：未登入點開邀請連結時會暫存 token，登入後自動導回 /join 完成加入。
+- ✅ 邀請管理：可檢視歷史/有效邀請並停用指定邀請。
+- ✅ 收據上傳：建立交易時可直接上傳收據圖片，或後續再補上傳；前端列表支援縮圖預覽與原圖查看。
+
 ## 資料庫初始化
 
+本專案使用 Entity Framework Core Migrations 管理 schema。
+
 應用啟動時會自動：
-- 創建資料庫結構
+- 套用最新的 EF Core Migrations（自動建立/更新資料表結構）
 - 初始化預設分類
+
+若需手動操作遷移（可選）：
+- 產生遷移：dotnet ef migrations add <MigrationName>
+- 套用遷移：dotnet ef database update
+
+所有遷移檔位於 `backend/Migrations/`，請納入版控。
+
+注意：已改為在啟動時呼叫 `Database.Migrate()`，不再使用 `EnsureCreated()`。
+
+## 靜態檔案與收據儲存
+
+- 後端會提供靜態檔案服務（`wwwroot`）。
+- 收據圖片會儲存於 `backend/wwwroot/uploads/receipts/{groupId}/`，API 回傳相對路徑（例如：`/uploads/receipts/1/xxx.jpg`）。
+- 前端會使用 `VITE_API_BASE_URL` 自動拼接為可訪問之完整網址。
+- 已在 `.gitignore` 忽略 `backend/wwwroot/uploads/`，避免把使用者上傳檔案提交到版控。
+
+## 提交前檢查清單
+
+- [ ] 後端變更：Controllers/Services/Models 對應的 DTO 與路由是否一致。
+- [ ] 已包含最新 EF Core 遷移檔（`backend/Migrations/*`）。
+- [ ] 前端已更新 service 呼叫與頁面（`src/services/*`, `src/pages/*`, 新增 `JoinPage.tsx`）。
+- [ ] `frontend/package.json` 已加入 `qrcode.react` 依賴並完成安裝（建議一併提交 lock 檔）。
+- [ ] `.gitignore` 包含 `backend/wwwroot/uploads/` 忽略規則。
+- [ ] README 已更新新增功能、遷移與靜態檔案說明。
 
 ## 注意事項
 

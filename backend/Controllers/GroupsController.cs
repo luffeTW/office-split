@@ -25,6 +25,57 @@ public class GroupsController : ControllerBase
         return userId;
     }
 
+    [HttpPost("{groupId}/invites")]
+    public async Task<ActionResult<GroupInviteDto>> CreateInvite(int groupId, [FromBody] CreateInviteDto dto)
+    {
+        var userId = GetUserId();
+        try
+        {
+            var invite = await _groupService.CreateInviteAsync(groupId, userId, dto.TtlHours, dto.MaxUses);
+            return Ok(invite);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("invites/{token}")]
+    public async Task<ActionResult<GroupInviteDto>> GetInvite(string token)
+    {
+        try
+        {
+            var info = await _groupService.GetInviteInfoAsync(token);
+            if (info == null) return NotFound();
+            return Ok(info);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("join/{token}")]
+    public async Task<ActionResult<JoinByTokenResultDto>> JoinByToken(string token)
+    {
+        var userId = GetUserId();
+        try
+        {
+            var result = await _groupService.JoinByTokenAsync(token, userId);
+            if (!result.Joined && string.Equals(result.Message, "邀請不存在"))
+                return NotFound(result);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("all")]
     public async Task<ActionResult<List<GroupDto>>> GetAllGroups()
     {
@@ -129,6 +180,44 @@ public class GroupsController : ControllerBase
         }
     }
 
+    [HttpGet("{groupId}/invites")]
+    public async Task<ActionResult<List<GroupInviteDto>>> ListInvites(int groupId)
+    {
+        var userId = GetUserId();
+        try
+        {
+            var invites = await _groupService.ListInvitesAsync(groupId, userId);
+            return Ok(invites);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("invites/{token}/deactivate")]
+    public async Task<IActionResult> DeactivateInvite(string token)
+    {
+        var userId = GetUserId();
+        try
+        {
+            var ok = await _groupService.DeactivateInviteAsync(token, userId);
+            if (!ok) return NotFound();
+            return NoContent();
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
     [HttpDelete("{groupId}/members/{memberId}")]
     public async Task<IActionResult> RemoveMember(int groupId, int memberId)
     {

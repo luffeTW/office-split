@@ -16,6 +16,7 @@ public class TransactionDto
     public string? Description { get; set; }
     public DateTime Date { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? ReceiptUrl { get; set; }
     public List<SplitDto>? Splits { get; set; }
 }
 
@@ -47,6 +48,9 @@ public class CreateTransactionDto
     public List<int>? SplitUserIds { get; set; }
 
     public bool SplitEqually { get; set; } = true;
+
+    // 可選：若有先上傳收據，可傳其網址
+    public string? ReceiptUrl { get; set; }
 }
 
 public class UpdateTransactionDto
@@ -57,6 +61,7 @@ public class UpdateTransactionDto
     public DateTime? Date { get; set; }
     public int? PayerUserId { get; set; }
     public int? BorrowerUserId { get; set; }
+    public string? ReceiptUrl { get; set; }
 }
 
 public class SplitDto

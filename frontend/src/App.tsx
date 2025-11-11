@@ -8,6 +8,7 @@ import GroupsPage from './pages/GroupsPage'
 import UsersPage from './pages/UsersPage'
 import ReportsPage from './pages/ReportsPage'
 import Layout from './components/Layout'
+import JoinPage from './pages/JoinPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
@@ -19,6 +20,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/join" element={<JoinPage />} />
       <Route
         path="/"
         element={

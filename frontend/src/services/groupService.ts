@@ -35,6 +35,30 @@ export interface AddMemberDto {
   role: string
 }
 
+export interface GroupInviteDto {
+  id: number
+  groupId: number
+  groupName: string
+  token: string
+  createdAt: string
+  expiresAt?: string
+  maxUses?: number
+  uses: number
+  isActive: boolean
+}
+
+export interface CreateInvitePayload {
+  ttlHours?: number
+  maxUses?: number
+}
+
+export interface JoinByTokenResultDto {
+  groupId: number
+  groupName: string
+  joined: boolean
+  message: string
+}
+
 export const groupService = {
   getUserGroups: async (): Promise<Group[]> => {
     const response = await apiClient.get<Group[]>('/groups')
@@ -72,5 +96,29 @@ export const groupService = {
 
   removeMember: async (groupId: number, memberId: number): Promise<void> => {
     await apiClient.delete(`/groups/${groupId}/members/${memberId}`)
+  },
+
+  createInvite: async (groupId: number, payload: CreateInvitePayload): Promise<GroupInviteDto> => {
+    const res = await apiClient.post<GroupInviteDto>(`/groups/${groupId}/invites`, payload)
+    return res.data
+  },
+
+  getInviteInfo: async (token: string): Promise<GroupInviteDto> => {
+    const res = await apiClient.get<GroupInviteDto>(`/groups/invites/${token}`)
+    return res.data
+  },
+
+  joinByToken: async (token: string): Promise<JoinByTokenResultDto> => {
+    const res = await apiClient.post<JoinByTokenResultDto>(`/groups/join/${token}`, {})
+    return res.data
+  },
+
+  listInvites: async (groupId: number): Promise<GroupInviteDto[]> => {
+    const res = await apiClient.get<GroupInviteDto[]>(`/groups/${groupId}/invites`)
+    return res.data
+  },
+
+  deactivateInvite: async (token: string): Promise<void> => {
+    await apiClient.post(`/groups/invites/${token}/deactivate`, {})
   },
 }

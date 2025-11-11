@@ -16,6 +16,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Category> Categories { get; set; }
     public DbSet<Transaction> Transactions { get; set; }
     public DbSet<Split> Splits { get; set; }
+    public DbSet<GroupInvite> GroupInvites { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +37,20 @@ public class ApplicationDbContext : DbContext
                   .HasForeignKey(g => g.CreatedBy)
                   .OnDelete(DeleteBehavior.Restrict);
         });
+
+      // GroupInvite configuration
+      modelBuilder.Entity<GroupInvite>(entity =>
+      {
+        entity.HasIndex(e => e.Token).IsUnique();
+        entity.HasOne(gi => gi.Group)
+            .WithMany()
+            .HasForeignKey(gi => gi.GroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+        entity.HasOne(gi => gi.Creator)
+            .WithMany()
+            .HasForeignKey(gi => gi.CreatedBy)
+            .OnDelete(DeleteBehavior.Restrict);
+      });
 
         // GroupMember configuration
         modelBuilder.Entity<GroupMember>(entity =>

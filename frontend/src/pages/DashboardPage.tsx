@@ -1,10 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { groupService } from '../services/groupService'
 import { transactionService } from '../services/transactionService'
 import { categoryService } from '../services/categoryService'
-import { reportService, MyDebts } from '../services/reportService'
+import { reportService, MyDebts, type Report, type CategorySummary, type MonthlySummary } from '../services/reportService'
 import { Card, CardContent } from '@/components/ui/card'
+import CategoryPieChart from '@/components/charts/CategoryPieChart'
+import MonthlyTrendChart from '@/components/charts/MonthlyTrendChart'
+import MonthlyIncomeExpenseAreaChart from '@/components/charts/MonthlyIncomeExpenseAreaChart'
+import CategoryDonutChart from '@/components/charts/CategoryDonutChart'
+import StackedCategoryMonthlyBar from '@/components/charts/StackedCategoryMonthlyBar'
+import MemberBalanceBar from '@/components/charts/MemberBalanceBar'
+import UserCategoryRadar from '@/components/charts/UserCategoryRadar'
+import CategoryTreemap from '@/components/charts/CategoryTreemap'
+import TransactionScatter from '@/components/charts/TransactionScatter'
 
 function DashboardPage() {
   // showAll 為 true 時代表顯示「全部群組」的統合狀態
@@ -127,6 +136,244 @@ function DashboardPage() {
 
   // 結清功能已移除
 
+  // 報表資料：單一群組
+  const { data: singleReport, isLoading: singleReportLoading } = useQuery<Report>({
+    queryKey: ['report', selectedGroupId, startDate || null, endDate || null, selectedCategoryId === 'all' ? null : selectedCategoryId],
+    queryFn: () => {
+      if (!selectedGroupId || showAll) return Promise.resolve({
+        totalIncome: 0, totalExpense: 0, balance: 0,
+        categorySummaries: [], monthlySummaries: [], userBalances: []
+      } as Report)
+      return reportService.getGroupReport(
+        selectedGroupId,
+        startDate || undefined,
+        endDate || undefined,
+        selectedCategoryId === 'all' ? undefined : selectedCategoryId
+      )
+    },
+    enabled: !!selectedGroupId && !showAll,
+  })
+
+  // 報表資料：全部群組，前端彙整
+  const { data: aggregatedReport, isLoading: aggregatedReportLoading } = useQuery<Report>({
+    queryKey: ['report', 'all', startDate || null, endDate || null, selectedCategoryId === 'all' ? null : selectedCategoryId],
+    queryFn: async () => {
+      if (!showAll || !groups) return {
+        totalIncome: 0, totalExpense: 0, balance: 0,
+        categorySummaries: [], monthlySummaries: [], userBalances: []
+      } as Report
+      const reports = await Promise.all(groups.map(g => reportService.getGroupReport(
+        g.id,
+        startDate || undefined,
+        endDate || undefined,
+        selectedCategoryId === 'all' ? undefined : selectedCategoryId
+      )))
+
+      // 合併函式
+      const catMap = new Map<string, CategorySummary>()
+      const monthKey = (m: MonthlySummary) => `${m.year}-${String(m.month).padStart(2, '0')}`
+      const monthMap = new Map<string, MonthlySummary>()
+
+      let totalIncome = 0
+      let totalExpense = 0
+
+      const userMap = new Map<number, { userId: number; username: string; totalPaid: number; totalOwed: number; balance: number }>()
+      for (const r of reports) {
+        totalIncome += r.totalIncome
+        totalExpense += r.totalExpense
+        for (const c of r.categorySummaries || []) {
+          const key = `${c.categoryName}|${c.categoryType}`
+          const exist = catMap.get(key)
+          if (exist) {
+            exist.totalAmount += c.totalAmount
+            exist.transactionCount += c.transactionCount
+          } else {
+            catMap.set(key, { ...c })
+          }
+        }
+        for (const m of r.monthlySummaries || []) {
+          const key = monthKey(m)
+          const exist = monthMap.get(key)
+          if (exist) {
+            exist.income += m.income
+            exist.expense += m.expense
+            exist.balance += m.balance
+          } else {
+            monthMap.set(key, { ...m })
+          }
+        }
+        for (const ub of r.userBalances || []) {
+          const ex = userMap.get(ub.userId)
+          if (ex) {
+            ex.totalPaid += ub.totalPaid
+            ex.totalOwed += ub.totalOwed
+            ex.balance += ub.balance
+          } else {
+            userMap.set(ub.userId, { ...ub })
+          }
+        }
+      }
+
+      return {
+        totalIncome,
+        totalExpense,
+        balance: totalIncome - totalExpense,
+        categorySummaries: Array.from(catMap.values()),
+        monthlySummaries: Array.from(monthMap.values()).sort((a, b) => a.year === b.year ? a.month - b.month : a.year - b.year),
+        userBalances: Array.from(userMap.values()),
+      } as Report
+    },
+    enabled: showAll && !!groups,
+  })
+
+  // 依狀態自動選擇第一個群組（避免在 render 中 setState）
+  useEffect(() => {
+    if (!showAll && !selectedGroupId && (groups?.length ?? 0) > 0) {
+      setSelectedGroupId(groups![0].id)
+    }
+  }, [showAll, selectedGroupId, groups])
+
+  const usingTransactions = showAll ? allTransactions : groupTransactions
+  const transactionsLoading = showAll ? allTxLoading : groupTxLoading
+  const myDebts = showAll ? myDebtsAll : myDebtsSingle
+  const recentTransactions = (usingTransactions || []).slice(0, 5)
+
+  const usingReport = showAll ? aggregatedReport : singleReport
+  const reportLoading = showAll ? aggregatedReportLoading : singleReportLoading
+
+  // 圖表資料整理
+  const categoryPieData = useMemo(() => {
+    const list = usingReport?.categorySummaries || []
+    // 預設顯示支出類別
+    const expenseOnly = list.filter(c => c.categoryType === 'Expense')
+    // 取前 8 名，其餘合併為其他
+    const sorted = [...expenseOnly].sort((a, b) => b.totalAmount - a.totalAmount)
+    const top = sorted.slice(0, 8)
+    const rest = sorted.slice(8)
+    const data = top.map(c => ({ name: c.categoryName, value: Number(c.totalAmount) }))
+    const restSum = rest.reduce((sum, c) => sum + Number(c.totalAmount), 0)
+    if (restSum > 0) data.push({ name: '其他', value: restSum })
+    return data
+  }, [usingReport])
+
+  const monthlyTrendData = useMemo(() => {
+    const list = usingReport?.monthlySummaries || []
+    return list.map(m => ({
+      monthLabel: `${m.year}-${String(m.month).padStart(2, '0')}`,
+      income: Number(m.income),
+      expense: Number(m.expense),
+      balance: Number(m.balance),
+    }))
+  }, [usingReport])
+
+  // Area chart uses相同 monthly 資料
+  const monthlyAreaData = monthlyTrendData
+
+  // Donut category (expense only, sorted)
+  const categoryDonutData = useMemo(() => {
+    const list = usingReport?.categorySummaries || []
+    return [...list]
+      .filter(c => c.categoryType === 'Expense' && Number(c.totalAmount) > 0)
+      .sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount))
+      .map(c => ({ name: c.categoryName, value: Number(c.totalAmount) }))
+  }, [usingReport])
+
+  // Stacked Category x Month (Expense only)
+  const stackedCategory = useMemo(() => {
+    const tx = usingTransactions || []
+    if (!categories || categories.length === 0) return { data: [], keys: [] as string[] }
+    const typeMap = new Map<number, string>(categories.map(c => [c.id, c.type]))
+    const monthMap = new Map<string, Record<string, number>>()
+    const totalByCat = new Map<string, number>()
+
+    for (const t of tx) {
+      const type = typeMap.get(t.categoryId)
+      if (type !== 'Expense') continue
+      const monthLabel = new Date(t.date).toISOString().slice(0, 7)
+      const key = t.categoryName || `分類${t.categoryId}`
+      if (!monthMap.has(monthLabel)) monthMap.set(monthLabel, {})
+      const row = monthMap.get(monthLabel)!
+      row[key] = (row[key] || 0) + Number(t.amount)
+      totalByCat.set(key, (totalByCat.get(key) || 0) + Number(t.amount))
+    }
+
+    // 只取前 6 名，其他合併
+    const topCats = [...totalByCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(e => e[0])
+    const rows = [...monthMap.entries()].sort((a, b) => a[0] > b[0] ? 1 : -1).map(([monthLabel, row]) => {
+      const base: any = { monthLabel }
+      let other = 0
+      for (const [k, v] of Object.entries(row)) {
+        if (topCats.includes(k)) base[k] = v as number
+        else other += v as number
+      }
+      if (other > 0) base['其他'] = other
+      return base
+    })
+    const keys = [...topCats]
+    if (rows.some(r => r['其他'])) keys.push('其他')
+    return { data: rows, keys }
+  }, [usingTransactions, categories])
+
+  // Member balance (from report)
+  const memberBalanceData = useMemo(() => {
+    return (usingReport?.userBalances || []).map(u => ({ name: u.username, balance: Number(u.balance) }))
+  }, [usingReport])
+
+  // User x Category radar (Expense via splits)
+  const radarData = useMemo(() => {
+    const tx = usingTransactions || []
+    if (!categories || categories.length === 0) return { rows: [], users: [] as string[] }
+    const typeMap = new Map<number, string>(categories.map(c => [c.id, c.type]))
+    const users = new Map<number, string>()
+    const cats = new Set<string>()
+    const byUserCat = new Map<string, number>() // `${userName}||${catName}` -> sum
+
+    for (const t of tx) {
+      const type = typeMap.get(t.categoryId)
+      if (type !== 'Expense') continue
+      const catName = t.categoryName || `分類${t.categoryId}`
+      cats.add(catName)
+      for (const s of (t.splits || [])) {
+        users.set(s.userId, s.userName || String(s.userId))
+        const key = `${s.userName || s.userId}||${catName}`
+        byUserCat.set(key, (byUserCat.get(key) || 0) + Number(s.amount))
+      }
+    }
+
+    // 選前 6 個分類（依總額）
+    const catTotals = new Map<string, number>()
+    byUserCat.forEach((v, k) => {
+      const cat = k.split('||')[1]
+      catTotals.set(cat, (catTotals.get(cat) || 0) + v)
+    })
+    const topCats = [...catTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(e => e[0])
+    const userList = [...users.values()].slice(0, 5) // 限制最多 5 位，避免太亂
+
+    const rows = topCats.map(cat => {
+      const row: any = { category: cat }
+      for (const uname of userList) {
+        const key = `${uname}||${cat}`
+        row[uname] = byUserCat.get(key) || 0
+      }
+      return row
+    })
+    return { rows, users: userList }
+  }, [usingTransactions, categories])
+
+  // Treemap for categories (Expense only)
+  const treemapData = useMemo(() => {
+    return (usingReport?.categorySummaries || [])
+      .filter(c => c.categoryType === 'Expense' && Number(c.totalAmount) > 0)
+      .map(c => ({ name: c.categoryName, size: Number(c.totalAmount) }))
+  }, [usingReport])
+
+  // Scatter: month x amount (transaction amount)
+  const scatterData = useMemo(() => {
+    const tx = usingTransactions || []
+    return tx.map(t => ({ month: new Date(t.date).getUTCMonth() + 1, amount: Number(t.amount) }))
+  }, [usingTransactions])
+
+  // 在所有 hooks 之後再做條件渲染（避免改變 hooks 呼叫順序）
   if (groupsLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -138,16 +385,6 @@ function DashboardPage() {
   if (!groups || groups.length === 0) {
     return <div className="rounded border bg-card p-4 text-sm text-muted-foreground">尚未加入任何群組，請先創建或加入群組</div>
   }
-
-  // 初始預設為全部；若使用者切換到單一群組且尚未選擇，則自動選第一個
-  if (!showAll && !selectedGroupId && groups.length > 0) {
-    setSelectedGroupId(groups[0].id)
-  }
-
-  const usingTransactions = showAll ? allTransactions : groupTransactions
-  const transactionsLoading = showAll ? allTxLoading : groupTxLoading
-  const myDebts = showAll ? myDebtsAll : myDebtsSingle
-  const recentTransactions = (usingTransactions || []).slice(0, 5)
 
   return (
     <div>
@@ -269,6 +506,119 @@ function DashboardPage() {
           </Card>
         </div>
       )}
+
+      {/* Charts */}
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">支出分類分佈</div>
+            {reportLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              </div>
+            ) : (categoryPieData?.length ?? 0) === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <CategoryPieChart data={categoryPieData} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">每月趨勢</div>
+            {reportLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              </div>
+            ) : (monthlyTrendData?.length ?? 0) === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <MonthlyTrendChart data={monthlyTrendData} />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Advanced charts per spec */}
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">每月收支與淨額</div>
+            {reportLoading || monthlyAreaData.length === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <MonthlyIncomeExpenseAreaChart data={monthlyAreaData} />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">分類占比</div>
+            {reportLoading || categoryDonutData.length === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <CategoryDonutChart data={categoryDonutData} />
+            )}
+          </CardContent>
+        </Card> */}
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">分類 × 月堆疊支出</div>
+            {stackedCategory.data.length === 0 || stackedCategory.keys.length === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <StackedCategoryMonthlyBar data={stackedCategory.data as any} categories={stackedCategory.keys} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">成員餘額</div>
+            {memberBalanceData.length === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <MemberBalanceBar data={memberBalanceData} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">成員×分類消費輪廓</div>
+            {radarData.rows.length === 0 || radarData.users.length === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <UserCategoryRadar data={radarData.rows as any} users={radarData.users} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">分類結構</div>
+            {treemapData.length === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <CategoryTreemap data={treemapData} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="mb-3 text-lg font-medium">單筆散點（月 × 金額）</div>
+            {scatterData.length === 0 ? (
+              <div className="text-sm text-muted-foreground">沒有可顯示的資料</div>
+            ) : (
+              <TransactionScatter data={scatterData} />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="mt-6">
         <Card>

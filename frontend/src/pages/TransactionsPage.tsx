@@ -11,6 +11,7 @@ import { buildFileUrl } from '../lib/utils'
 import { transactionService, CreateTransactionDto } from '../services/transactionService'
 import { categoryService } from '../services/categoryService'
 import { useAuth } from '@/hooks/useAuth'
+import { AITransactionInput } from '../components/AITransactionInput'
 
 function TransactionsPage() {
   // 列表顯示全部群組交易，不再需要外層的 selectedGroupId
@@ -240,96 +241,96 @@ function TransactionsPage() {
             <TableBody>
               {transactions?.map((transaction) => (
                 <>
-                <TableRow key={transaction.id}>
-                  <TableCell>{new Date(transaction.date).toLocaleDateString('zh-TW')}</TableCell>
-                  <TableCell>
-                    {transaction.categoryIcon} {transaction.categoryName}
-                  </TableCell>
-                  <TableCell>${transaction.amount.toFixed(2)}</TableCell>
-                  <TableCell>{transaction.description || '-'}</TableCell>
-                  <TableCell>
-                    {transaction.receiptUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(transaction.id)}
-                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm hover:bg-muted"
-                        title="展開收據操作"
-                      >
-                        收據
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform ${expandedId === transaction.id ? 'rotate-180' : ''}`}
-                        />
-                      </button>
-                    ) : (
-                      '-'
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span>{transaction.userName}</span>
-                      {transaction.groupName && (
-                        <span className="text-xs text-muted-foreground">{transaction.groupName}</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="space-x-2">
-                    <Button variant="secondary" size="sm" onClick={() => handleEdit(transaction)}>編輯</Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(transaction.id)}>刪除</Button>
-                  </TableCell>
-                </TableRow>
-                {expandedId === transaction.id && transaction.receiptUrl && (
-                  <TableRow key={`${transaction.id}-expanded`} className="bg-muted/30">
-                    <TableCell colSpan={7}>
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <TableRow key={transaction.id}>
+                    <TableCell>{new Date(transaction.date).toLocaleDateString('zh-TW')}</TableCell>
+                    <TableCell>
+                      {transaction.categoryIcon} {transaction.categoryName}
+                    </TableCell>
+                    <TableCell>${transaction.amount.toFixed(2)}</TableCell>
+                    <TableCell>{transaction.description || '-'}</TableCell>
+                    <TableCell>
+                      {transaction.receiptUrl ? (
                         <button
                           type="button"
-                          onClick={() => openPreview(buildFileUrl(transaction.receiptUrl))}
-                          className="group relative max-h-64 w-full overflow-hidden rounded-md border bg-white sm:w-80"
-                          title="點擊預覽大圖"
+                          onClick={() => toggleExpand(transaction.id)}
+                          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm hover:bg-muted"
+                          title="展開收據操作"
                         >
-                          <img
-                            src={buildFileUrl(transaction.receiptUrl)}
-                            alt="收據預覽"
-                            loading="lazy"
-                            className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-105"
+                          收據
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${expandedId === transaction.id ? 'rotate-180' : ''}`}
                           />
-                          <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/0 transition-colors duration-200 group-hover:bg-black/20">
-                            <Eye className="h-6 w-6 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                          </div>
                         </button>
-                        <div className="flex-1 space-y-3">
-                          <div className="text-sm text-muted-foreground">收據操作</div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => openPreview(buildFileUrl(transaction.receiptUrl))}
-                              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-                            >
-                              預覽大圖
-                              <Eye className="ml-2 h-4 w-4" />
-                            </button>
-                            <a
-                              href={buildFileUrl(transaction.receiptUrl)}
-                              target="_blank"
-                              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-                            >
-                              在新分頁開啟
-                              <ExternalLink className="ml-2 h-4 w-4" />
-                            </a>
-                            <a
-                              href={buildFileUrl(transaction.receiptUrl)}
-                              download
-                              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-                            >
-                              下載
-                              <Download className="ml-2 h-4 w-4" />
-                            </a>
-                          </div>
-                        </div>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span>{transaction.userName}</span>
+                        {transaction.groupName && (
+                          <span className="text-xs text-muted-foreground">{transaction.groupName}</span>
+                        )}
                       </div>
                     </TableCell>
+                    <TableCell className="space-x-2">
+                      <Button variant="secondary" size="sm" onClick={() => handleEdit(transaction)}>編輯</Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(transaction.id)}>刪除</Button>
+                    </TableCell>
                   </TableRow>
-                )}
+                  {expandedId === transaction.id && transaction.receiptUrl && (
+                    <TableRow key={`${transaction.id}-expanded`} className="bg-muted/30">
+                      <TableCell colSpan={7}>
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                          <button
+                            type="button"
+                            onClick={() => openPreview(buildFileUrl(transaction.receiptUrl))}
+                            className="group relative max-h-64 w-full overflow-hidden rounded-md border bg-white sm:w-80"
+                            title="點擊預覽大圖"
+                          >
+                            <img
+                              src={buildFileUrl(transaction.receiptUrl)}
+                              alt="收據預覽"
+                              loading="lazy"
+                              className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-105"
+                            />
+                            <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/0 transition-colors duration-200 group-hover:bg-black/20">
+                              <Eye className="h-6 w-6 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                            </div>
+                          </button>
+                          <div className="flex-1 space-y-3">
+                            <div className="text-sm text-muted-foreground">收據操作</div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => openPreview(buildFileUrl(transaction.receiptUrl))}
+                                className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                              >
+                                預覽大圖
+                                <Eye className="ml-2 h-4 w-4" />
+                              </button>
+                              <a
+                                href={buildFileUrl(transaction.receiptUrl)}
+                                target="_blank"
+                                className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                              >
+                                在新分頁開啟
+                                <ExternalLink className="ml-2 h-4 w-4" />
+                              </a>
+                              <a
+                                href={buildFileUrl(transaction.receiptUrl)}
+                                download
+                                className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                              >
+                                下載
+                                <Download className="ml-2 h-4 w-4" />
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </>
               ))}
             </TableBody>
@@ -365,6 +366,24 @@ function TransactionsPage() {
                 ))}
               </select>
             </div>
+
+            {/* AI 智慧記帳輸入 */}
+            {formData.groupId > 0 && !editingId && (
+              <AITransactionInput
+                groupId={formData.groupId}
+                onParsed={(data) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    amount: data.amount,
+                    categoryId: data.categoryId,
+                    description: data.description,
+                    date: data.date,
+                    payerUserId: data.payerUserId || prev.payerUserId,
+                    borrowerUserId: data.borrowerUserId || prev.borrowerUserId,
+                  }))
+                }}
+              />
+            )}
             <div className="space-y-2">
               <Label htmlFor="amount">金額</Label>
               <Input
@@ -401,7 +420,7 @@ function TransactionsPage() {
                 </optgroup>
               </select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="description">描述</Label>
               <Input id="description" value={formData.description}
